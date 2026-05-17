@@ -95,7 +95,9 @@ make
 # Install (optional)
 sudo make install
 
-# There is currently no automated test suite (make test prints "No tests")
+# Run tests (shell integration + C unit tests)
+make test
+
 ```
 
 `configure` probes for:
@@ -106,6 +108,46 @@ sudo make install
 
 `config.h` is the only output consumed by the source; `Makefile` is the other.
 Both are `.gitignore`d.
+
+### Test Suite
+
+Tests live under `tests/`.  `make test` builds all binaries and runs
+`tests/run_tests.sh`.  Two tiers:
+
+**Tier 1 — Shell integration tests** (`tests/sh/t*.sh`)  
+Each file sources `tests/harness.sh` and drives the built binary through
+stdin, comparing stdout against expected output.  Tests are grouped by
+functional area:
+
+| File | Coverage |
+|---|---|
+| `t01_insert_print.sh` | `a`, `i`, `c`, `p`, `l`, `n` commands |
+| `t02_addresses.sh` | All address forms: `n`, `.`, `$`, `±n`, `/re/`, `?re?`, `,`, `;`, `'x` |
+| `t03_delete_move_copy.sh` | `d`, `m`, `t` (copy), `j` commands |
+| `t04_substitution.sh` | `s` command and all flags (`g`, nth, `p`, `&`, `\1`) |
+| `t05_global.sh` | `g`, `v` commands, multi-command global body |
+| `t06_file_io.sh` | `e`, `r`, `w`, `W` commands |
+| `t07_undo.sh` | `u` command, single and double undo |
+| `t08_marks.sh` | `k` command and `'x` addressing |
+| `t09_regex.sh` | BRE (default) and ERE (`-E`) |
+| `t10_errors.sh` | `?` error token, exit codes, bad addresses |
+| `t11_new_commands.sh` | `B`, `N`, `y`, `x` commands; error cases, dot/modified side-effects |
+| `t12_flags.sh` | `-l` loose (continues, exits 0), `-T` transaction (exits 2), `-E` ERE |
+| `t13_shell_escape.sh` | `!cmd` shell escape |
+
+**Tier 2 — C89 unit tests** (`tests/unit/`)  
+`test_utils.c` tests pure utility functions (`has_trailing_escape`,
+`strip_escapes`, `translit_text`) by linking against the editor objects.
+`main.c` is compiled separately with `-Dmain=_oed_real_main` to avoid a
+symbol conflict while still providing all global variables and helper
+functions.  The minimal assertion header lives in `tests/test.h`.
+
+**Adding a new test**: add a `run_test` call to the appropriate `sh/t*.sh`
+file, or add a new `sh/tNN_name.sh` file (it is picked up automatically by
+the glob in `run_tests.sh`).  For a new C unit test binary, add a source
+file to `tests/unit/`, add its build rule to `configure` following the
+existing `test_utils` pattern, and add the binary name to `TESTBINS`.
+
 
 ---
 

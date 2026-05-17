@@ -5,3 +5,6 @@ oed
 *.core
 Makefile
 README
+tests/unit/test_main.o
+tests/unit/test_utils.o
+tests/unit/test_utils

@@ -403,9 +403,24 @@ install:
 	install -c -s -m 755 \${PROG} \${DESTDIR}\${PREFIX}/bin
 	install -c -m 644 ed.1 \${DESTDIR}\${MANDIR}/man1/\${PROG}.1
 
-test:
-	@echo "No tests"
+TESTOBJS =	buf.o glbl.o io.o re.o sub.o undo.o \\
+	regcomp.o regerror.o regexec.o regfree.o \\
+	reallocarray.o strlcat.o strlcpy.o
 
+TESTBINS =	tests/unit/test_utils
+
+# main.c compiled with its own main() renamed so the test binary can supply one
+tests/unit/test_main.o: main.c
+	\${CC} \${CFLAGS} -Dmain=_oed_real_main -o tests/unit/test_main.o -c main.c
+
+tests/unit/test_utils: tests/unit/test_utils.o tests/unit/test_main.o \${TESTOBJS}
+	\${CC} \${LDFLAGS} -o tests/unit/test_utils tests/unit/test_utils.o tests/unit/test_main.o \${TESTOBJS}
+
+tests/unit/test_utils.o: tests/unit/test_utils.c
+	\${CC} \${CFLAGS} -o tests/unit/test_utils.o -c tests/unit/test_utils.c
+
+test: \${PROG} \${TESTBINS}
+	@sh tests/run_tests.sh
 clean:
 	rm -f \${PROG} \${OBJS}
 

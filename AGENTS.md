@@ -135,6 +135,7 @@ functional area:
 | `t12_flags.sh` | `-l` loose, `-T` transaction (dry-run/wet-run, deferred writes, shell escape ban), `-lT` combined, `-M` agent mode |
 | `t13_shell_escape.sh` | `!cmd` shell escape |
 | `t14_pcre.sh` | Comprehensive PCRE2 (`-P`) tests: errors, pattern reuse, syntax features (lookahead/behind, `\w`/`\s`/`\b`/`\d`, non-greedy, named/non-capturing groups, possessive), substitution edge cases (zero-length, nth, `&`), command interactions (`g`, `v`, `?re?`), flag combinations |
+| `t15_bre_ere.sh` | Comprehensive BRE (default) and ERE (`-E`) tests: errors, pattern reuse, BRE-specific syntax (`\{n,m\}`, `\(\)` backreferences in pattern and substitution), ERE-specific syntax (`+`, `?`, `{n,m}`, `\|`, `()`), POSIX bracket expressions (`[:alpha:]`, `[:digit:]`, `[:alnum:]`, `[:space:]`, `[:upper:]`, `[:lower:]`, `[:punct:]`, negated/range/edge-case classes), substitution edge cases (zero-length, nth, `&`, multi-capture), command interactions (`g`, `v`, `?re?`), flag combinations (`-n`, `-l`, `-e`, `-lT`) |
 
 **Tier 2 — C89 unit tests** (`tests/unit/`)  
 `test_utils.c` tests pure utility functions (`has_trailing_escape`,

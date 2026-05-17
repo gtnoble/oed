@@ -247,6 +247,11 @@ command namespace:
 
 ## What NOT to Do
 
+- Do not commit code changes without updating documentation.  Every change
+  that adds, removes, or alters a flag, command, or behaviour must be
+  reflected in **all three** of: `ed.1` (man page), `POSIX` (extensions /
+  deviations summary), and `AGENTS.md` (AI agent reference).  Treat
+  documentation as part of the same commit as the code.
 - Do not run `./configure` unnecessarily — it overwrites `Makefile` and
   `config.h`, potentially changing build settings.
 - Do not add a test framework without first verifying it builds with all

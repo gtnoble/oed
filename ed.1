@@ -37,6 +37,7 @@
 .Op Fl l
 .Op Fl v
 .Op Fl E
+.Op Fl T
 .Op Fl p Ar string
 .Op Ar file
 .Sh DESCRIPTION
@@ -166,6 +167,18 @@ Use extended regular expressions
 .Pq ERE
 for pattern matching instead of basic regular expressions
 .Pq BRE .
+.It Fl T
+Transaction mode.
+On any error when standard input is from a script,
+roll back all in-memory changes made since startup and exit with status 2.
+Intended for use by scripts and automated tools that require all-or-nothing
+edits: place the
+.Ic w
+command as the final command so that the file is written only if every
+preceding command succeeds.
+Note that a
+.Ic w
+command executed before the failing command cannot be undone on disk.
 .It Fl p Ar string
 Specifies a command prompt.
 May be toggled on and off with the
@@ -896,6 +909,7 @@ as well as the address specifier
 and the flags
 .Fl E ,
 .Fl l ,
+.Fl T ,
 and
 .Fl v
 are extensions to that specification.

@@ -41,6 +41,30 @@ EXTENSIONS
    rest of the line is interpreted as a shell command, and no escape
    processing is performed by ed.
 
+4) Additional command-line flags have been added:
+	-E  Use extended regular expressions (ERE) instead of basic (BRE).
+	-l  Loose exit status: continue past ERR-level errors in scripts
+	    instead of exiting with status 2.
+	-v  Verbose mode: print an explanation for each `?' notification;
+	    substitution commands also report the count of substitutions
+	    made to standard error.
+	-T  Transaction mode: on any ERR-level error in a script, roll back
+	    all in-memory changes via the undo stack and exit with status 2.
+	    Provides all-or-nothing semantics for scripted edits.
+
+5) New commands have been added:
+	`B' prints a one-line machine-readable buffer summary to standard
+	   output: current-addr, total-lines, modified-flag, and filename.
+	`N' toggles persistent line numbering: when active, all output lines
+	   are prefixed with their line number and a tab.
+	`y' yanks (copies) the addressed lines into a cut buffer.
+	`x' puts (inserts) the cut buffer contents after the addressed line.
+
+6) All `?' error tokens, byte counts from `r'/`w', and the `!' shell-
+   escape prompt are written to standard output rather than standard
+   error.  This allows scripts and automated tools to read a single
+   stream without multiplexing descriptors.
+
 DEVIATIONS
 ----------
 1) Though ed is not a stream editor, it can be used to edit binary files.

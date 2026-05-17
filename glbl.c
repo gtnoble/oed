@@ -205,3 +205,12 @@ clear_active_list(void)
 	active_list = NULL;
 	SPL0();
 }
+/* get_active_count: return the number of lines in the active list, then
+   clear it.  Used by the C (count-matches) command. */
+int
+get_active_count(void)
+{
+	int n = active_last;
+	clear_active_list();
+	return n;
+}

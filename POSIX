@@ -62,10 +62,18 @@ EXTENSIONS
 	    are attempted and the wet run fires only if every command succeeded.
 	-n  Always-number: enable persistent line numbering at startup,
 	    equivalent to an immediate `N' command.
-	-A  Success token: print `OK' after every successful command so a
-	    pipe-driving agent can detect command boundaries on one stream.
+	-A  Success token: print `OK <dot>' after every successful command,
+	    where <dot> is the current line number after the command.  For
+	    example, a successful `p' on line 3 prints `OK 3'.  A
+	    pipe-driving agent can detect command boundaries and track dot
+	    on a single stream without a separate `=' round-trip.
 	-M  Machine/agent mode: convenience flag that enables -s, -A, -v, -l, -E,
 	    and -T simultaneously.  Does not imply -n.
+	-R  Read-only mode: reject any command that modifies the buffer or
+	    writes to a file (a, c, d, e, E, i, j, m, r, s, t, u, w, W, x,
+	    and shell escapes).  Read and search commands continue to work.
+	    Unlike GNU ed's -r (restricted mode), -R restricts buffer
+	    modification rather than file-path access.
 	-e cmd  Inline command: append cmd to the list of commands to execute
 	    before reading standard input.  May be repeated.  Implies -s.
 	Exit code scheme: ERR-level errors exit 1; EMOD (unsaved buffer) exits
@@ -73,7 +81,8 @@ EXTENSIONS
 
 5) New commands have been added:
 	`B' prints a one-line machine-readable buffer summary to standard
-	   output: current-addr, total-lines, modified-flag, and filename.
+	   output: current-addr, total-lines, modified-flag, undo-depth, and
+	   filename.  undo-depth is 1 if an undo is available, 0 otherwise.
 	`N' toggles persistent line numbering: when active, all output lines
 	   are prefixed with their line number and a tab.
 	`y' yanks (copies) the addressed lines into a cut buffer.
@@ -85,6 +94,20 @@ EXTENSIONS
 	   a lower-case letter) stores or retrieves a named register instead
 	   of the default unnamed cut buffer.  26 named registers (a-z) are
 	   provided in addition to the default.
+
+	`C' (addr1,addr2)C/re/ counts the lines in the addressed range
+	   matching re and prints the integer count.  The current address is
+	   unchanged.  Cannot be used inside a global command.
+	`=' (addr1,addr2)= now prints both resolved addresses separated by a
+	   space when a range is given; with a single address it prints that
+	   address; with no address it prints addr_last (existing behaviour
+	   preserved).
+	`Z' (1,$)Z computes the Adler-32 checksum of the addressed lines and
+	   prints it as eight lowercase hexadecimal digits.  Each line's bytes
+	   are fed to the algorithm followed by a synthetic newline separator.
+	   NUL bytes in binary files are hashed as stored.  On an empty buffer
+	   the output is 00000001 without error.  The current address is
+	   unchanged.
 6) All `?' error tokens, byte counts from `r'/`w', and the `!' shell-
    escape prompt are written to standard output rather than standard
    error.  This allows scripts and automated tools to read a single

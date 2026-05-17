@@ -16,7 +16,7 @@ run_test "delete range 1,2" \
 # delete all
 run_test "delete all lines leaves empty buffer" \
     "$(printf 'a\nfoo\nbar\n.\n,d\nB\nQ\n')" \
-    "0 0 1 (none)"
+    "0 0 1 1 (none)"
 
 # move line forward
 run_test "move line 1 to after line 3" \

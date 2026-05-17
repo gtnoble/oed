@@ -144,3 +144,9 @@ clear_undo_stack(void)
 	u_current_addr = current_addr;
 	u_addr_last = addr_last;
 }
+/* get_undo_depth: return 1 if an undo is available, 0 otherwise */
+int
+get_undo_depth(void)
+{
+	return (u_current_addr != -1 && u_addr_last != -1) ? 1 : 0;
+}

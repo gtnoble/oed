@@ -122,7 +122,7 @@ functional area:
 | File | Coverage |
 |---|---|
 | `t01_insert_print.sh` | `a`, `i`, `c`, `p`, `l`, `n` commands |
-| `t02_addresses.sh` | All address forms: `n`, `.`, `$`, `±n`, `/re/`, `?re?`, `,`, `;`, `'x` |
+| `t02_addresses.sh` | All address forms: `n`, `.`, `$`, `±n`, `/re/`, `?re?`, `,`, `;`, `'x`; `=` range form |
 | `t03_delete_move_copy.sh` | `d`, `m`, `t` (copy), `j` commands |
 | `t04_substitution.sh` | `s` command and all flags (`g`, nth, `p`, `&`, `\1`) |
 | `t05_global.sh` | `g`, `v` commands, multi-command global body |
@@ -131,8 +131,8 @@ functional area:
 | `t08_marks.sh` | `k` command and `'x` addressing |
 | `t09_regex.sh` | BRE (default), ERE (`-E`), and PCRE2 (`-P`) |
 | `t10_errors.sh` | `?` error token, exit codes, bad addresses |
-| `t11_new_commands.sh` | `B`, `N`, `y`, `x` commands; error cases, dot/modified side-effects |
-| `t12_flags.sh` | `-l` loose, `-T` transaction (dry-run/wet-run, deferred writes, shell escape ban), `-lT` combined, `-M` agent mode |
+| `t11_new_commands.sh` | `B` (with undo-depth field), `N`, `y`, `x`, `C` (match count), `K`, `Z` (Adler-32 checksum) commands; error cases, dot/modified side-effects |
+| `t12_flags.sh` | `-l` loose, `-T` transaction (dry-run/wet-run, deferred writes, shell escape ban), `-lT` combined, `-M` agent mode, `-R` read-only mode |
 | `t13_shell_escape.sh` | `!cmd` shell escape |
 | `t14_pcre.sh` | Comprehensive PCRE2 (`-P`) tests: errors, pattern reuse, syntax features (lookahead/behind, `\w`/`\s`/`\b`/`\d`, non-greedy, named/non-capturing groups, possessive), substitution edge cases (zero-length, nth, `&`), command interactions (`g`, `v`, `?re?`), flag combinations |
 | `t15_bre_ere.sh` | Comprehensive BRE (default) and ERE (`-E`) tests: errors, pattern reuse, BRE-specific syntax (`\{n,m\}`, `\(\)` backreferences in pattern and substitution), ERE-specific syntax (`+`, `?`, `{n,m}`, `\|`, `()`), POSIX bracket expressions (`[:alpha:]`, `[:digit:]`, `[:alnum:]`, `[:space:]`, `[:upper:]`, `[:lower:]`, `[:punct:]`, negated/range/edge-case classes), substitution edge cases (zero-length, nth, `&`, multi-capture), command interactions (`g`, `v`, `?re?`), flag combinations (`-n`, `-l`, `-e`, `-lT`) |
@@ -254,7 +254,7 @@ multiplex descriptors.
 | `2` | EMOD — unsaved buffer on quit, or fatal file I/O error |
 | `3` | Fatal / internal error |
 
-**Agent-friendly flags** (current `getopt` string: `p:slvETnAMe:P`):
+**Agent-friendly flags** (current `getopt` string: `p:slvETnAMe:PR`):
 
 | Flag | Effect |
 |---|---|
@@ -265,20 +265,24 @@ multiplex descriptors.
 | `-E` | Use ERE instead of BRE |
 | `-P` | Use PCRE2 regular expressions; mutually exclusive with `-E`; requires build with libpcre2-8 |
 | `-n` | Always-number — prefix every output line with its line number; equivalent to running `N` at startup |
-| `-A` | Success token — print `OK` after every successful command; errors print `?` and do not print `OK` |
+| `-A` | Success token — print `OK <dot>` after every successful command, where `<dot>` is the current line number (e.g. `OK 3`); errors print `?` and do not print `OK` |
 | `-e cmd` | Inline command — execute `cmd` as a command before reading stdin; repeatable; implies `-s` |
 | `-lT` | Combined loose + transaction — attempt all commands, commit writes only if every command succeeded; exit 1 and roll back if any error occurred |
 | `-M` | Machine/agent mode — convenience flag enabling `-s -A -v -l -T -E` simultaneously; does not imply `-n` |
+| `-R` | Read-only mode — reject any mutating command (`a`, `c`, `d`, `e`, `E`, `i`, `j`, `m`, `r`, `s`, `t`, `u`, `w`, `W`, `x`, `!`); read and search commands continue to work; distinct from GNU ed's `-r` restricted mode |
 
 **Non-standard commands already implemented:**
 
 | Command | Syntax | Effect |
 |---|---|---|
-| `B` | `B` | Print buffer state: `current_addr addr_last modified filename` on one line — machine-readable snapshot |
+| `B` | `B` | Print buffer state: `current_addr addr_last modified undo_depth filename` — `undo_depth` is `1` if undo is available, `0` otherwise |
 | `N` | `N` | Toggle `always_number`: prefix every subsequent output line with its line number |
 | `y` | `(.,.)y` | Yank addressed lines into the named or unnamed cut buffer (prefix with `"r` to use named register r) |
 | `x` | `(.)x` | Put named or unnamed register contents after the addressed line (prefix with `"r` to use named register r) |
 | `K` | `K` | List all currently set marks; one line per mark in the form `'x addr` |
+| `C` | `(1,$)C/re/` | Count lines in the addressed range matching `re`; print the integer count; current address unchanged; cannot be nested inside a global command |
+| `Z` | `(1,$)Z` | Compute Adler-32 checksum of addressed lines; print as 8 lowercase hex digits; each line's bytes are fed with a synthetic `\n` separator so boundary changes are visible; NUL bytes hashed as stored; empty buffer yields `00000001` without error; current address unchanged |
+| `=` | `(addr1,addr2)=` | With a range, prints both resolved addresses separated by a space; with a single address or no address, prints that address (existing behaviour) |
 
 
 ### Features not yet implemented

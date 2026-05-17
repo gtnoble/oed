@@ -78,6 +78,7 @@ static int get_marked_node_addr(int);
 static line_t *dup_line_node(line_t *);
 static int enqueue_write(int, int, const char *, int);
 static int flush_write_queue(void);
+static int adler32_lines(int, int, unsigned long *);
 static void free_write_queue(void);
 
 sigjmp_buf env;
@@ -127,6 +128,7 @@ static char *home;		/* home directory */
 static char *e_cmds[256];	/* inline command strings from -e */
 static int n_ecmds = 0;		/* number of -e commands */
 int success_token = 0;		/* if set, print OK after each successful command */
+int readonly = 0;		/* if set, reject all mutating commands */
 
 void
 seterrmsg(char *s)
@@ -149,7 +151,7 @@ main(volatile int argc, char ** volatile argv)
 	home = getenv("HOME");
 
 top:
-	while ((c = getopt(argc, argv, "p:slvETnAMe:P")) != -1)
+	while ((c = getopt(argc, argv, "p:slvETnAMe:PR")) != -1)
 		switch (c) {
 		case 'p':				/* set prompt */
 			dps = prompt = optarg;
@@ -193,6 +195,9 @@ top:
 			loose = 1;
 			transact = 1;
 			extended_re = 1;
+			break;
+		case 'R':				/* read-only mode */
+			readonly = 1;
 			break;
 		case 'e':				/* inline command */
 			if (n_ecmds < 256)
@@ -330,7 +335,7 @@ top:
 			    (status = display_lines(current_addr, current_addr,
 				status)) >= 0)) {
 			if (success_token)
-				fputs("OK\n", stdout);
+				printf("OK %d\n", current_addr);
 			continue;
 		}
 		switch (status) {
@@ -751,7 +756,18 @@ exec_command(void)
 			return ERR;
 		}
 	}
-	switch ((c = (unsigned char)*ibufp++)) {
+	c = (unsigned char)*ibufp++;
+	if (readonly) {
+		switch (c) {
+		case 'a': case 'c': case 'd': case 'e': case 'E':
+		case 'i': case 'j': case 'm': case 'r': case 's':
+		case 't': case 'u': case 'w': case 'W': case 'x':
+		case '!':
+			seterrmsg("read-only mode");
+			return ERR;
+		}
+	}
+	switch (c) {
 	case 'a':
 		GET_COMMAND_SUFFIX();
 		if (!isglobal && !transact) clear_undo_stack();
@@ -1122,8 +1138,10 @@ exec_command(void)
 		gflag = 0;
 		break;
 	case '=':
-		GET_COMMAND_SUFFIX();
-		printf("%d\n", addr_cnt ? second_addr : addr_last);
+		if (addr_cnt >= 2)
+			printf("%d %d\n", first_addr, second_addr);
+		else
+			printf("%d\n", addr_cnt ? second_addr : addr_last);
 		break;
 	case '!':
 		if (addr_cnt > 0) {
@@ -1152,8 +1170,9 @@ exec_command(void)
 			return ERR;
 		}
 		GET_COMMAND_SUFFIX();
-		printf("%d %d %d %s\n", current_addr, addr_last,
-		    modified, old_filename[0] ? old_filename : "(none)");
+		printf("%d %d %d %d %s\n", current_addr, addr_last,
+		    modified, get_undo_depth(),
+		    old_filename[0] ? old_filename : "(none)");
 		break;
 	case 'N':
 		if (addr_cnt > 0) {
@@ -1184,6 +1203,34 @@ exec_command(void)
 			}
 		}
 		break;
+	case 'C':
+		if (isglobal) {
+			seterrmsg("cannot nest global commands");
+			return ERR;
+		} else if (check_addr_range(1, addr_last) < 0)
+			return ERR;
+		else if (build_active_list(1) < 0)
+			return ERR;
+		GET_COMMAND_SUFFIX();
+		printf("%d\n", get_active_count());
+		break;
+	case 'Z':
+		if (addr_last == 0) {
+			/* empty buffer: Adler-32 of zero bytes = 1 */
+			GET_COMMAND_SUFFIX();
+			printf("%08lx\n", 1UL);
+			break;
+		}
+		if (check_addr_range(1, addr_last) < 0)
+			return ERR;
+		GET_COMMAND_SUFFIX();
+		{
+			unsigned long csum;
+			if (adler32_lines(first_addr, second_addr, &csum) < 0)
+				return ERR;
+			printf("%08lx\n", csum);
+		}
+		break;
 	default:
 		seterrmsg("unknown command");
 		return ERR;
@@ -1191,6 +1238,36 @@ exec_command(void)
 	return gflag;
 }
 
+
+/* adler32_lines: compute Adler-32 checksum of lines first..last; each
+   line's stored bytes are fed to the algorithm followed by a synthetic
+   newline separator.  NUL bytes in binary files are hashed as stored
+   (not converted to newlines).  Returns 0 on success, ERR on I/O error. */
+static int
+adler32_lines(int first, int last, unsigned long *out)
+{
+	unsigned long s1 = 1;
+	unsigned long s2 = 0;
+	line_t *lp;
+	char *s;
+	int n, i;
+
+	lp = get_addressed_line_node(first);
+	for (n = first; n <= last; n++, lp = lp->q_forw) {
+		if ((s = get_sbuf_line(lp)) == NULL)
+			return ERR;
+		for (i = 0; i < lp->len; i++) {
+			s1 = (s1 + (unsigned char)s[i]) % 65521UL;
+			s2 = (s2 + s1) % 65521UL;
+		}
+		/* synthetic newline separator makes result sensitive to line
+		   boundaries: checksum(["foobar"]) != checksum(["foo","bar"]) */
+		s1 = (s1 + (unsigned long)'\n') % 65521UL;
+		s2 = (s2 + s1) % 65521UL;
+	}
+	*out = ((s2 & 0xFFFFUL) << 16) | (s1 & 0xFFFFUL);
+	return 0;
+}
 
 /* check_addr_range: return status of address range check */
 static int

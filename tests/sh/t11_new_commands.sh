@@ -6,19 +6,19 @@ _current_file="t11_new_commands"
 # B command reports: current_addr addr_last modified filename
 run_test "B command reports buffer state on empty buffer" \
     "$(printf 'B\nQ\n')" \
-    "0 0 0 (none)"
+    "0 0 0 0 (none)"
 
 run_test "B command reports modified flag after append" \
     "$(printf 'a\nfoo\n.\nB\nQ\n')" \
-    "1 1 1 (none)"
+    "1 1 1 1 (none)"
 
 run_test "B command reports addr_last correctly" \
     "$(printf 'a\nfoo\nbar\nbaz\n.\nB\nQ\n')" \
-    "3 3 1 (none)"
+    "3 3 1 1 (none)"
 
 run_test "B command reports current_addr at dot" \
     "$(printf 'a\nfoo\nbar\nbaz\n.\n2\nB\nQ\n')" \
-    "$(printf 'bar\n2 3 1 (none)')"
+    "$(printf 'bar\n2 3 1 1 (none)')"
 
 # N command toggles always_number; subsequent prints include line numbers
 run_test "N command enables line-number prefix on print" \
@@ -52,7 +52,7 @@ run_test "B with address gives error" \
 # B after write: modified resets to 0 and filename is recorded
 run_test "B after write shows modified=0 and filename" \
     "$(printf 'a\nfoo\n.\nw %s/b_test.txt\nB\nQ\n' "$_TDIR")" \
-    "$(printf '1 1 0 %s/b_test.txt' "$_TDIR")"
+    "$(printf '1 1 0 1 %s/b_test.txt' "$_TDIR")"
 
 # N with an address is an error
 run_test "N with address gives error" \
@@ -72,7 +72,7 @@ run_test "y does not move dot" \
 # y does not set the modified flag
 run_test "y does not set modified flag" \
     "$(printf 'a\nfoo\n.\nw %s/ymod.txt\n1y\nB\nQ\n' "$_TDIR")" \
-    "$(printf '1 1 0 %s/ymod.txt' "$_TDIR")"
+    "$(printf '1 1 0 1 %s/ymod.txt' "$_TDIR")"
 
 # y on empty buffer is an error
 run_test "y on empty buffer gives error" \
@@ -88,7 +88,7 @@ run_test "x with empty cut buffer gives error" \
 # append 3 lines (dot=3), yank 1,2, put after line 3 -> dot = 3+2 = 5
 run_test "x moves dot to last put line" \
     "$(printf 'a\none\ntwo\nthree\n.\n1,2y\n3x\nB\nQ\n')" \
-    "5 5 1 (none)"
+    "5 5 1 1 (none)"
 
 # K command: list active marks
 run_test "K with no marks produces no output" \
@@ -119,4 +119,71 @@ run_test "x without register puts from unnamed register" \
 run_test "register prefix on non-y-or-x command gives error" \
     "$(printf 'a\nfoo\n.\n"ap\nQ\n')" \
     "?"
+
+# C command: count lines matching a pattern
+run_test "C counts matching lines" \
+    "$(printf 'a\nfoo\nbar\nfoo\n.\nC/foo/\nQ\n')" \
+    "2"
+
+run_test "C prints 0 when no lines match" \
+    "$(printf 'a\nfoo\nbar\n.\nC/baz/\nQ\n')" \
+    "0"
+
+run_test "C with range counts only addressed lines" \
+    "$(printf 'a\nfoo\nbar\nfoo\n.\n1,2C/foo/\nQ\n')" \
+    "1"
+
+run_test "C does not change dot" \
+    "$(printf 'a\nfoo\nbar\nfoo\n.\n2p\nC/foo/\n.p\nQ\n')" \
+    "$(printf 'bar\n2\nbar')"
+
+# B undo depth field
+run_test "B undo depth is 1 after mutating command" \
+    "$(printf 'a\nfoo\n.\nB\nQ\n')" \
+    "1 1 1 1 (none)"
+
+run_test "B undo depth is 1 after undo (redo still available)" \
+    "$(printf 'a\nfoo\n.\nu\nB\nQ\n')" \
+    "0 0 1 1 (none)"
+
+# Z command: Adler-32 buffer checksum
+run_test "Z on empty buffer prints 00000001" \
+    "$(printf 'Z\nQ\n')" \
+    "00000001"
+
+run_test "Z checksums single-line buffer" \
+    "$(printf 'a\nfoo\n.\nZ\nQ\n')" \
+    "03d1014f"
+
+run_test "Z checksums two-line buffer" \
+    "$(printf 'a\nfoo\nbar\n.\nZ\nQ\n')" \
+    "0ca6028e"
+
+run_test "Z with single-line range" \
+    "$(printf 'a\nfoo\nbar\n.\n2,2Z\nQ\n')" \
+    "039d0140"
+
+run_test "Z 1,1 equals single-line buffer checksum" \
+    "$(printf 'a\nfoo\nbar\n.\n1,1Z\nQ\n')" \
+    "03d1014f"
+
+run_test "Z checksum changes after substitution" \
+    "$(printf 'a\nfoo\n.\nZ\ns/foo/baz/\nZ\nQ\n')" \
+    "$(printf '03d1014f\n03ad0148')"
+
+run_test "Z checksum restored after undo" \
+    "$(printf 'a\nfoo\n.\nZ\ns/foo/baz/\nu\nZ\nQ\n')" \
+    "$(printf '03d1014f\n03d1014f')"
+
+run_test "Z does not change dot" \
+    "$(printf 'a\nfoo\nbar\n.\n1p\nZ\n.p\nQ\n')" \
+    "$(printf 'foo\n0ca6028e\nfoo')"
+
+run_test "Z is usable inside a g command body" \
+    "$(printf 'a\nfoo\n.\ng/foo/Z\nQ\n')" \
+    "03d1014f"
+
+run_test "Z with address rejects address on empty buffer" \
+    "$(printf '1Z\nQ\n')" \
+    "?" "-l"
 report

@@ -34,7 +34,7 @@ run_test "substitution no match prints question mark" \
 
 # Unknown command prints ?
 run_test "unknown command prints question mark" \
-    "$(printf 'a\nfoo\n.\nZ\nQ\n')" \
+    "$(printf 'a\nfoo\n.\n@\nQ\n')" \
     "?"
 
 # Multiple errors: each prints ?; -l (loose) continues

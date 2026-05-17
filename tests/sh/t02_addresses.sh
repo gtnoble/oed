@@ -63,4 +63,21 @@ run_test "semicolon sets dot to first addr" \
     "$(printf 'a\nfoo\nbar\nbaz\n.\n1;+1p\nQ\n')" \
     "$(printf 'foo\nbar')"
 
+
+# = with range prints both resolved addresses
+run_test "= with range prints both resolved addresses" \
+    "$(printf 'a\none\ntwo\nthree\n.\n1,3=\nQ\n')" \
+    "1 3"
+
+run_test "= with single address prints that line number" \
+    "$(printf 'a\none\ntwo\nthree\n.\n2=\nQ\n')" \
+    "2"
+
+run_test "= with no address prints addr_last" \
+    "$(printf 'a\none\ntwo\nthree\n.\n=\nQ\n')" \
+    "3"
+
+run_test "bare comma range with = prints 1 and addr_last" \
+    "$(printf 'a\none\ntwo\nthree\n.\n,=\nQ\n')" \
+    "1 3"
 report

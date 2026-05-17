@@ -171,6 +171,8 @@ if ((i) > (n)) { \
 /* Local Function Declarations */
 void add_line_node(line_t *);
 int build_active_list(int);
+int get_active_count(void);
+int get_undo_depth(void);
 void clear_active_list(void);
 void clear_undo_stack(void);
 int close_sbuf(void);
@@ -236,3 +238,4 @@ extern int had_error;
 extern int u_current_addr;
 extern int u_addr_last;
 extern int success_token;
+extern int readonly;

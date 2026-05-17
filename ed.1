@@ -42,6 +42,7 @@
 .Op Fl n
 .Op Fl A
 .Op Fl M
+.Op Fl R
 .Op Fl e Ar cmd
 .Op Fl p Ar string
 .Op Ar file
@@ -214,8 +215,12 @@ command immediately after startup.
 .It Fl A
 After each successful command print
 .Ql OK
-followed by a newline to standard output,
+followed by the current line number and a newline to standard output,
 providing an unambiguous per-command success signal for pipe-driving agents.
+For example, after a successful
+.Ic p
+command on line 3 the output is
+.Ql OK\ 3 .
 Errors still produce
 .Ql \&?
 and do not print
@@ -240,6 +245,20 @@ signals, explains errors verbosely, continues past errors, and commits writes
 only if the entire script succeeds.
 .Fl n
 is not implied and must be given separately if needed.
+.It Fl R
+Read-only mode.
+Rejects any command that modifies the buffer or writes to a file:
+.Ic a , c , d , e , E , i , j , m , r , s , t , u , w , W , x ,
+and shell escapes
+.Pq Ic \&! .
+Commands that inspect the buffer
+.Pq Ic p , l , n , = , / , ? , B , C , K
+continue to work.
+Note: this flag is distinct from the restricted mode
+.Pq Fl r
+of GNU
+.Nm ed ,
+which limits file-path access rather than buffer modification.
 .It Fl e Ar cmd
 Append
 .Ar cmd
@@ -789,6 +808,7 @@ is not specified, then the current window size is used.
 The current address is set to the last line printed.
 .It ($) Ns Ic =
 Prints the line number of the addressed line.
+If an address range is given, prints both resolved addresses separated by a space.
 .It (+)
 An address without a command prints the addressed line
 and sets the current address to that line.
@@ -821,7 +841,15 @@ The current line is unchanged.
 .It Ic B
 Prints a one-line buffer summary to standard output:
 .Pp
-.Dl current-addr total-lines modified filename
+.Dl current-addr total-lines modified undo-depth filename
+.Pp
+.Ar undo-depth
+is
+.Sq 1
+if an undo is available (i.e., the last command can be reversed with
+.Ic u ) ,
+.Sq 0
+otherwise.
 .Pp
 .Ar modified
 is
@@ -834,6 +862,14 @@ is
 .Sq (none)
 if no default filename has been set.
 The current address is unchanged.
+.It (1,$) Ns Ic C Ns / Ar re Ns /
+Counts the addressed lines matching the regular expression
+.Ar re .
+Prints the count as a single integer followed by a newline.
+The current address is unchanged.
+Cannot be used inside a global
+.Pq Ic g No or Ic v
+command.
 .It (.,.) Ns Ic x
 Copies
 .Pq puts
@@ -895,6 +931,22 @@ is the mark letter and
 .Ar addr
 is the current address of the marked line.
 Takes no address.
+The current address is unchanged.
+.It (1,$) Ns Ic Z
+Prints the Adler-32 checksum of the addressed lines as eight lowercase
+hexadecimal digits followed by a newline.
+Each line's stored bytes are fed to the checksum algorithm followed by
+a synthetic newline, making the result sensitive to line boundaries.
+.Pq E.g., the checksum of
+.Ql ["foo","bar"]
+differs from that of
+.Ql ["foobar"] .
+NUL bytes in binary files are hashed as stored and are not converted to
+newlines prior to checksumming.
+On an empty buffer the output is
+.Ql 00000001
+.Pq the Adler-32 of zero bytes ,
+without returning an error.
 The current address is unchanged.
 .El
 .Sh ASYNCHRONOUS EVENTS

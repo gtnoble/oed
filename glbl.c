@@ -94,7 +94,7 @@ exec_global(int interact, int gflag)
 		else if ((cmd = get_extended_line(&n, 0)) == NULL)
 			return ERR;
 	}
-	clear_undo_stack();
+	if (!transact) clear_undo_stack();
 	while ((lp = next_active_node()) != NULL) {
 		if ((current_addr = get_line_node_addr(lp)) < 0)
 			return ERR;

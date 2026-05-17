@@ -191,3 +191,28 @@ run_test "-M: implies ERE so + quantifier works without -E" \
 run_test "-M: implies ERE so grouping and alternation work" \
     "$(printf 'a\ncat\ndog\nbird\n.\ng/cat|dog/p\n')" \
     "$(printf 'OK\ncat\ndog\nOK')" "-M"
+
+# transaction + global command interaction
+rm -f "$TXFILE"
+run_test_file "-lT: global command succeeds, file written" \
+    "$(printf 'a\nfoo\nbar\n.\ng/foo/s/foo/baz/\nw %s\n' "$TXFILE")" \
+    "$(printf 'baz\nbar')" \
+    "$TXFILE" "-l -T"
+
+rm -f "$TXFILE"
+run_test_file "-lT: mutation before failing global rolled back, file not written" \
+    "$(printf 'a\nfoo\nbar\n.\ns/foo/baz/\ng/bar/999p\nw %s\n' "$TXFILE")" \
+    "" \
+    "$TXFILE" "-l -T"
+
+rm -f "$TXFILE"
+run_test_file "-lT: first global rolled back when second global fails, file not written" \
+    "$(printf 'a\nfoo\nbar\n.\ng/foo/s/foo/baz/\ng/bar/999p\nw %s\n' "$TXFILE")" \
+    "" \
+    "$TXFILE" "-l -T"
+
+rm -f "$TXFILE"
+run_test_file "-M: global command succeeds, file written" \
+    "$(printf 'a\nfoo\nbar\n.\ng/foo/s/foo/baz/\nw %s\n' "$TXFILE")" \
+    "$(printf 'baz\nbar')" \
+    "$TXFILE" "-M"

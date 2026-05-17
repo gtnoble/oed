@@ -183,3 +183,11 @@ run_test "-M: shell escape is forbidden" \
 run_test "-M: does not enable persistent line numbering" \
     "$(printf 'a\nfoo\n.\n,p\n')" \
     "$(printf 'OK\nfoo\nOK')" "-M"
+
+run_test "-M: implies ERE so + quantifier works without -E" \
+    "$(printf 'a\nfoo\nbr\n.\n/fo+/p\n')" \
+    "$(printf 'OK\nfoo\nOK')" "-M"
+
+run_test "-M: implies ERE so grouping and alternation work" \
+    "$(printf 'a\ncat\ndog\nbird\n.\ng/cat|dog/p\n')" \
+    "$(printf 'OK\ncat\ndog\nOK')" "-M"

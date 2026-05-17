@@ -63,4 +63,37 @@ run_test "empty regex reuses last compiled pattern" \
     "$(printf 'a\nfoo\nfoo2\n.\n/foo/p\n//p\nQ\n')" \
     "$(printf 'foo\nfoo2')"
 
+
+# ----- PCRE2 (-P flag) tests -----
+
+# PCRE: lookahead
+run_test "PCRE2 positive lookahead matches prefix only" \
+    "$(printf 'a\nfoo bar\nfoo baz\nfoo qux\n.\n/foo(?= bar)/p\nQ\n')" \
+    "foo bar" "-P"
+
+# PCRE: negative lookahead
+run_test "PCRE2 negative lookahead excludes unwanted pattern" \
+    "$(printf 'a\nfoobar\nfoo baz\nfoo bar\n.\ng/foo(?! bar)/p\nQ\n')" \
+    "$(printf 'foobar\nfoo baz')" "-P"
+
+# PCRE: \d shorthand in substitution
+run_test "PCRE2 digit shorthand replaces number" \
+    "$(printf 'a\nhello 42 world\n.\ns/\d+/NUM/gp\nQ\n')" \
+    "hello NUM world" "-P"
+
+# PCRE: capture group substitution
+run_test "PCRE2 capture groups swap words" \
+    "$(printf 'a\nhello world\n.\ns/(hello) (world)/\\2 \\1/p\nQ\n')" \
+    "world hello" "-P"
+
+# PCRE: global substitution
+run_test "PCRE2 global substitution replaces all occurrences" \
+    "$(printf 'a\naaa bbb aaa\n.\ns/a+/X/gp\nQ\n')" \
+    "X bbb X" "-P"
+
+# PCRE: mutual exclusion with ERE
+run_test_exit "-P and -E flags are mutually exclusive" \
+    "$(printf 'q\n')" \
+    1 "-EP"
+
 report

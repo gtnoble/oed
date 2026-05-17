@@ -30,8 +30,13 @@
  *	@(#)ed.h,v 1.5 1994/02/01 00:34:39 alm Exp
  */
 
+#include "config.h"
 #include <limits.h>
 #include <regex.h>
+#ifdef HAVE_PCRE2
+# define PCRE2_CODE_UNIT_WIDTH 8
+# include <pcre2.h>
+#endif
 #include <signal.h>
 
 #define ERR		(-2)
@@ -40,6 +45,27 @@
 
 #define MINBUFSZ 512		/* minimum buffer size - must be > 0 */
 #define SE_MAX 30		/* max subexpressions in a regular expression */
+
+/* Flags for ed_regexec */
+#define ED_REG_STARTEND 1   /* use rm[0] as start/end of subject (cf REG_STARTEND) */
+#define ED_REG_NOTBOL   2   /* subject start is not beginning of line */
+
+/* Generic match-offset pair; used by ed_regexec */
+typedef struct {
+	int rm_so;
+	int rm_eo;
+} ed_match_t;
+
+/* Compiled pattern wrapper: holds either a POSIX regex_t or a PCRE2 pattern */
+typedef struct {
+	int is_pcre;		/* if set, use PCRE2 fields below */
+	int nsub;		/* number of capturing subexpressions */
+	regex_t *posix;		/* POSIX compiled pattern (non-PCRE path) */
+#ifdef HAVE_PCRE2
+	pcre2_code       *pcre_code;
+	pcre2_match_data *pcre_mdata;
+#endif
+} ed_pattern_t;
 #define LINECHARS INT_MAX	/* max chars per line */
 
 /* gflags */
@@ -155,7 +181,7 @@ int exec_global(int, int);
 int extract_addr_range(void);
 int extract_subst_tail(int *, int *);
 line_t *get_addressed_line_node(int);
-regex_t *get_compiled_pattern(void);
+ed_pattern_t *get_compiled_pattern(void);
 char *get_extended_line(int *, int);
 int get_line_node_addr(line_t *);
 char *get_sbuf_line(line_t *);
@@ -171,7 +197,9 @@ char *put_sbuf_line(char *);
 int put_tty_line(char *, int, int, int);
 void quit(int);
 int read_file(char *, int);
-int search_and_replace(regex_t *, int, int);
+int search_and_replace(ed_pattern_t *, int, int);
+void ed_pattern_free(ed_pattern_t *);
+int ed_regexec(ed_pattern_t *, const char *, int, ed_match_t *, int);
 void seterrmsg(char *);
 char *strip_escapes(char *);
 char *translit_text(char *, int, int, int);
@@ -201,6 +229,7 @@ extern int lineno;
 extern int second_addr;
 extern int loose;
 extern int extended_re;
+extern int pcre_re;
 extern int always_number;
 extern int transact;
 extern int had_error;

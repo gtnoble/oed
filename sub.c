@@ -40,8 +40,8 @@
 extern int garrulous;
 
 static char *extract_subst_template(void);
-static int substitute_matching_text(regex_t *, line_t *, int, int);
-static int apply_subst_template(char *, regmatch_t *, int, int);
+static int substitute_matching_text(ed_pattern_t *, line_t *, int, int);
+static int apply_subst_template(char *, ed_match_t *, int, int);
 
 static char *rhbuf;		/* rhs substitution buffer */
 static int rhbufsz;		/* rhs substitution buffer size */
@@ -122,7 +122,7 @@ static int rbufsz;		/* substitute_matching_text buffer size */
 /* search_and_replace: for each line in a range, change text matching a pattern
    according to a substitution template; return status  */
 int
-search_and_replace(regex_t *pat, int gflag, int kth)
+search_and_replace(ed_pattern_t *pat, int gflag, int kth)
 {
 	undo_t *up;
 	char *txt;
@@ -180,14 +180,14 @@ search_and_replace(regex_t *pat, int gflag, int kth)
    a substitution template; return length of rbuf if changed, 0 if unchanged, or
    ERR on error */
 static int
-substitute_matching_text(regex_t *pat, line_t *lp, int gflag, int kth)
+substitute_matching_text(ed_pattern_t *pat, line_t *lp, int gflag, int kth)
 {
 	int off = 0;
 	int changed = 0;
 	int matchno = 0;
 	int i = 0;
 	int nempty = -1;
-	regmatch_t rm[SE_MAX];
+	ed_match_t rm[SE_MAX];
 	char *txt;
 	char *eot, *eom;
 
@@ -196,7 +196,7 @@ substitute_matching_text(regex_t *pat, line_t *lp, int gflag, int kth)
 	if (isbinary)
 		NUL_TO_NEWLINE(txt, lp->len);
 	eot = txt + lp->len;
-	if (!regexec(pat, txt, SE_MAX, rm, 0)) {
+	if (!ed_regexec(pat, txt, SE_MAX, rm, 0)) {
 		do {
 /* Don't do a 0-length match directly after a non-0-length */
 			if (rm[0].rm_eo == nempty) {
@@ -213,8 +213,8 @@ substitute_matching_text(regex_t *pat, line_t *lp, int gflag, int kth)
 					    rm[0].rm_eo - (eom - txt));
 				memcpy(rbuf + off, eom, i);
 				off += i;
-				if ((off = apply_subst_template(txt, rm, off,
-				    pat->re_nsub)) < 0)
+			if ((off = apply_subst_template(txt, rm, off,
+			    pat->nsub)) < 0)
 					return ERR;
 				eom = txt + rm[0].rm_eo;
 				if (kth)
@@ -226,7 +226,7 @@ substitute_matching_text(regex_t *pat, line_t *lp, int gflag, int kth)
 				nempty = rm[0].rm_so = rm[0].rm_eo;
 			rm[0].rm_eo = lp->len;
 		} while (rm[0].rm_so < lp->len && (gflag & GSG || kth) &&
-		    !regexec(pat, txt, SE_MAX, rm, REG_STARTEND | REG_NOTBOL));
+		    !ed_regexec(pat, txt, SE_MAX, rm, ED_REG_STARTEND | ED_REG_NOTBOL));
 		i = eot - eom;
 		REALLOC(rbuf, rbufsz, off + i + 2, ERR);
 		if (isbinary)
@@ -241,7 +241,7 @@ substitute_matching_text(regex_t *pat, line_t *lp, int gflag, int kth)
 /* apply_subst_template: modify text according to a substitution template;
    return offset to end of modified text */
 static int
-apply_subst_template(char *boln, regmatch_t *rm, int off, int re_nsub)
+apply_subst_template(char *boln, ed_match_t *rm, int off, int re_nsub)
 {
 	int j = 0;
 	int k = 0;

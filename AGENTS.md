@@ -129,11 +129,12 @@ functional area:
 | `t06_file_io.sh` | `e`, `r`, `w`, `W` commands |
 | `t07_undo.sh` | `u` command, single and double undo |
 | `t08_marks.sh` | `k` command and `'x` addressing |
-| `t09_regex.sh` | BRE (default) and ERE (`-E`) |
+| `t09_regex.sh` | BRE (default), ERE (`-E`), and PCRE2 (`-P`) |
 | `t10_errors.sh` | `?` error token, exit codes, bad addresses |
 | `t11_new_commands.sh` | `B`, `N`, `y`, `x` commands; error cases, dot/modified side-effects |
 | `t12_flags.sh` | `-l` loose, `-T` transaction (dry-run/wet-run, deferred writes, shell escape ban), `-lT` combined, `-M` agent mode |
 | `t13_shell_escape.sh` | `!cmd` shell escape |
+| `t14_pcre.sh` | Comprehensive PCRE2 (`-P`) tests: errors, pattern reuse, syntax features (lookahead/behind, `\w`/`\s`/`\b`/`\d`, non-greedy, named/non-capturing groups, possessive), substitution edge cases (zero-length, nth, `&`), command interactions (`g`, `v`, `?re?`), flag combinations |
 
 **Tier 2 — C89 unit tests** (`tests/unit/`)  
 `test_utils.c` tests pure utility functions (`has_trailing_escape`,
@@ -195,6 +196,7 @@ existing `test_utils` pattern, and add the binary name to `TESTBINS`.
 | `isglobal` | Inside a global command execution |
 | `isbinary` | File contains NUL bytes |
 | `extended_re` | Use ERE instead of BRE (`-E` flag) |
+| `pcre_re` | Use PCRE2 instead of BRE/ERE (`-P` flag) |
 | `always_number` | Always number output lines (toggled by `N` command at runtime; also enabled by `-n` startup flag) |
 | `loose` | Suppress some POSIX address errors |
 | `ibuf`, `ibufp`, `ibufsz` | Input line buffer and pointer |
@@ -251,7 +253,7 @@ multiplex descriptors.
 | `2` | EMOD — unsaved buffer on quit, or fatal file I/O error |
 | `3` | Fatal / internal error |
 
-**Agent-friendly flags** (current `getopt` string: `p:slvETnAMe:`):
+**Agent-friendly flags** (current `getopt` string: `p:slvETnAMe:P`):
 
 | Flag | Effect |
 |---|---|
@@ -260,11 +262,12 @@ multiplex descriptors.
 | `-T` | Transaction mode (dry-run/wet-run) — `w`/`W` are deferred; shell escapes forbidden; on any error roll back in-memory and exit 1 without writing; on clean exit execute all deferred writes |
 | `-v` | Garrulous mode — print explanation for every `?` to stderr |
 | `-E` | Use ERE instead of BRE |
+| `-P` | Use PCRE2 regular expressions; mutually exclusive with `-E`; requires build with libpcre2-8 |
 | `-n` | Always-number — prefix every output line with its line number; equivalent to running `N` at startup |
 | `-A` | Success token — print `OK` after every successful command; errors print `?` and do not print `OK` |
 | `-e cmd` | Inline command — execute `cmd` as a command before reading stdin; repeatable; implies `-s` |
 | `-lT` | Combined loose + transaction — attempt all commands, commit writes only if every command succeeded; exit 1 and roll back if any error occurred |
-| `-M` | Machine/agent mode — convenience flag enabling `-s -A -v -l -T` simultaneously; does not imply `-n` or `-E` |
+| `-M` | Machine/agent mode — convenience flag enabling `-s -A -v -l -T -E` simultaneously; does not imply `-n` |
 
 **Non-standard commands already implemented:**
 

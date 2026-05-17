@@ -136,6 +136,22 @@ EOF
   fi
 }
 
+pcre2check() {
+  cat << CEOF > conftest.c
+#define PCRE2_CODE_UNIT_WIDTH 8
+#include <pcre2.h>
+int main(void){pcre2_compile(NULL,0,0,NULL,NULL,NULL);return 0;}
+CEOF
+  $cc $cflags -o conftest conftest.c $ldflags -lpcre2-8 > /dev/null 2>&1
+  if [ $? -eq 0 ] ; then
+    rm -f conftest conftest.o conftest.c
+    return 0
+  else
+    rm -f conftest conftest.o conftest.c
+    return 1
+  fi
+}
+
 # Option variables
 if [ ! -z "$PREFIX" ] ; then
   prefix="$PREFIX"
@@ -235,6 +251,7 @@ if [ ! -z "$LDFLAGS" ] ; then
   ldflags="$LDFLAGS"
 else
   ldflags=""
+  libs=""
 fi
 
 if [ $static -ne 0 ] ; then
@@ -341,6 +358,16 @@ else
   echo "no"
 fi
 
+printf "checking for pcre2... "
+pcre2check
+if [ $? -eq 0 ] ; then
+  echo "#define HAVE_PCRE2" >> config.h
+  libs="$libs -lpcre2-8"
+  echo "yes"
+else
+  echo "no"
+fi
+
 echo "" >> config.h
 
 if [ $needreallocarray -eq 1 ] ; then
@@ -362,6 +389,9 @@ fi
 if [ ! -z "$ldflags" ] ; then
   ldflags="${ldflags## }"
 fi
+if [ ! -z "$libs" ] ; then
+  libs="${libs## }"
+fi
 
 printf "creating Makefile... "
 cat << EOF > Makefile
@@ -382,6 +412,12 @@ LDFLAGS =	$ldflags
 EOF
 fi
 
+if [ ! -z "$libs" ] ; then
+cat << MKEOF >> Makefile
+LIBS =	$libs
+MKEOF
+fi
+
 cat << EOF >> Makefile
 
 PREFIX =	$prefix
@@ -395,8 +431,7 @@ OBJS =	buf.o glbl.o io.o main.o re.o sub.o undo.o \\
 all: \${PROG}
 
 \${PROG}: \${OBJS}
-	\${CC} \${LDFLAGS} -o \${PROG} \${OBJS}
-
+	\${CC} \${LDFLAGS} -o \${PROG} \${OBJS} \${LIBS}
 install:
 	install -d \${DESTDIR}\${PREFIX}/bin
 	install -d \${DESTDIR}\${MANDIR}/man1
@@ -414,7 +449,7 @@ tests/unit/test_main.o: main.c
 	\${CC} \${CFLAGS} -Dmain=_oed_real_main -o tests/unit/test_main.o -c main.c
 
 tests/unit/test_utils: tests/unit/test_utils.o tests/unit/test_main.o \${TESTOBJS}
-	\${CC} \${LDFLAGS} -o tests/unit/test_utils tests/unit/test_utils.o tests/unit/test_main.o \${TESTOBJS}
+	\${CC} \${LDFLAGS} -o tests/unit/test_utils tests/unit/test_utils.o tests/unit/test_main.o \${TESTOBJS} \${LIBS}
 
 tests/unit/test_utils.o: tests/unit/test_utils.c
 	\${CC} \${CFLAGS} -o tests/unit/test_utils.o -c tests/unit/test_utils.c

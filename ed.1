@@ -37,6 +37,7 @@
 .Op Fl l
 .Op Fl v
 .Op Fl E
+.Op Fl P
 .Op Fl T
 .Op Fl n
 .Op Fl A
@@ -174,6 +175,15 @@ command.
 Use extended regular expressions
 .Pq ERE
 for pattern matching instead of basic regular expressions
+.It Fl P
+Use Perl Compatible Regular Expressions
+.Pq PCRE2
+for pattern matching.
+Mutually exclusive with
+.Fl E .
+Enables full PCRE2 syntax including lookahead, lookbehind, named captures,
+.Li \ed
+digit shorthand, possessive quantifiers, and Unicode properties.
 .Pq BRE .
 .It Fl T
 Transaction mode.
@@ -218,7 +228,9 @@ Enables
 .Fl v ,
 .Fl l ,
 and
-.Fl T
+.Fl T ,
+and
+.Fl E
 simultaneously.
 Intended as a convenience flag for agents: suppresses noise, emits per-command
 .Ql OK
@@ -227,9 +239,7 @@ or
 signals, explains errors verbosely, continues past errors, and commits writes
 only if the entire script succeeds.
 .Fl n
-and
-.Fl E
-are not implied and must be given separately if needed.
+is not implied and must be given separately if needed.
 .It Fl e Ar cmd
 Append
 .Ar cmd

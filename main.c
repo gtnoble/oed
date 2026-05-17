@@ -66,7 +66,7 @@ void handle_winch(int);
 
 static int next_addr(void);
 static int check_addr_range(int, int);
-static int get_matching_node_addr(regex_t *, int);
+static int get_matching_node_addr(ed_pattern_t *, int);
 static char *get_filename(int);
 static int get_shell_command(void);
 static int append_lines(int);
@@ -103,6 +103,7 @@ int scripted = 0;		/* if set, suppress diagnostics */
 int interactive = 0;		/* if set, we are in interactive mode */
 int loose = 0;		/* if set, don't exit on command errors */
 int extended_re = 0;	/* if set, use extended regular expressions */
+int pcre_re = 0;	/* if set, use PCRE2 regular expressions */
 int always_number = 0;	/* if set, always number printed lines */
 int transact = 0;		/* if set, roll back all changes on error */
 int had_error = 0;		/* if set, an error occurred during -lT transaction */
@@ -119,8 +120,7 @@ int addr_last;			/* last address in editor buffer */
 int lineno;			/* script line number */
 static char *prompt;		/* command-line prompt */
 static char *dps = "*";		/* default command-line prompt */
-
-static const char usage[] = "usage: %s [-] [-s] [-l] [-v] [-E] [-n] [-A] [-e cmd] [-p string] [file]\n";
+static const char usage[] = "usage: %s [-] [-s] [-l] [-v] [-E] [-P] [-n] [-A] [-e cmd] [-p string] [file]\n";
 
 static char *home;		/* home directory */
 
@@ -149,7 +149,7 @@ main(volatile int argc, char ** volatile argv)
 	home = getenv("HOME");
 
 top:
-	while ((c = getopt(argc, argv, "p:slvETnAMe:")) != -1)
+	while ((c = getopt(argc, argv, "p:slvETnAMe:P")) != -1)
 		switch (c) {
 		case 'p':				/* set prompt */
 			dps = prompt = optarg;
@@ -164,7 +164,18 @@ top:
 			garrulous = 1;
 			break;
 		case 'E':				/* extended regexp */
+			if (pcre_re) {
+				fprintf(stderr, "%s: -E and -P are mutually exclusive\n", argv[0]);
+				exit(1);
+			}
 			extended_re = 1;
+			break;
+		case 'P':				/* PCRE2 regexp */
+			if (extended_re) {
+				fprintf(stderr, "%s: -E and -P are mutually exclusive\n", argv[0]);
+				exit(1);
+			}
+			pcre_re = 1;
 			break;
 		case 'T':				/* transaction mode */
 			transact = 1;
@@ -175,12 +186,13 @@ top:
 		case 'A':				/* success token */
 			success_token = 1;
 			break;
-		case 'M':				/* machine/agent mode: -s -A -v -l -T */
+		case 'M':				/* machine/agent mode: -s -A -v -l -T -E */
 			scripted = 1;
 			success_token = 1;
 			garrulous = 1;
 			loose = 1;
 			transact = 1;
+			extended_re = 1;
 			break;
 		case 'e':				/* inline command */
 			if (n_ecmds < 256)
@@ -706,18 +718,17 @@ free_write_queue(void)
 	write_queue = NULL;
 	n_write_ops = write_queue_sz = 0;
 }
-
 int
 exec_command(void)
 {
 	extern int u_current_addr;
 	extern int u_addr_last;
 
-	static regex_t *pat = NULL;
+	static ed_pattern_t *pat = NULL;
 	static int sgflag = 0;
 	static int sgnum = 0;
 
-	regex_t *tpat;
+	ed_pattern_t *tpat;
 	char *fnp;
 	int gflag = 0;
 	int sflags = 0;
@@ -996,8 +1007,7 @@ exec_command(void)
 			return ERR;
 		} else if (tpat != pat) {
 			if (pat) {
-				regfree(pat);
-				free(pat);
+			ed_pattern_free(pat);
 			}
 			pat = tpat;
 			patlock = 1;		/* reserve pattern */
@@ -1203,7 +1213,7 @@ check_addr_range(int n, int m)
    pattern in a given direction.  wrap around begin/end of editor buffer if
    necessary */
 static int
-get_matching_node_addr(regex_t *pat, int dir)
+get_matching_node_addr(ed_pattern_t *pat, int dir)
 {
 	char *s;
 	int n = current_addr;
@@ -1217,7 +1227,7 @@ get_matching_node_addr(regex_t *pat, int dir)
 				return ERR;
 			if (isbinary)
 				NUL_TO_NEWLINE(s, lp->len);
-			if (!regexec(pat, s, 0, NULL, 0))
+			if (!ed_regexec(pat, s, 0, NULL, 0))
 				return n;
 		}
 	} while (n != current_addr);

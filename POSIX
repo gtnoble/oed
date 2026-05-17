@@ -43,6 +43,10 @@ EXTENSIONS
 
 4) Additional command-line flags have been added:
 	-E  Use extended regular expressions (ERE) instead of basic (BRE).
+	-P  Use PCRE2 regular expressions.  Mutually exclusive with -E.
+	    Enables lookahead/lookbehind, named captures, \d shorthand,
+	    and other PCRE2-specific syntax.  Only available when oed is
+	    built with libpcre2-8.
 	-l  Loose exit status: continue past ERR-level errors in scripts
 	    instead of exiting with status 1.  Combined with -T, all commands
 	    are attempted; the wet run commits only if every command succeeded.
@@ -60,8 +64,8 @@ EXTENSIONS
 	    equivalent to an immediate `N' command.
 	-A  Success token: print `OK' after every successful command so a
 	    pipe-driving agent can detect command boundaries on one stream.
-	-M  Machine/agent mode: convenience flag that enables -s, -A, -v, -l,
-	    and -T simultaneously.  Does not imply -n or -E.
+	-M  Machine/agent mode: convenience flag that enables -s, -A, -v, -l, -E,
+	    and -T simultaneously.  Does not imply -n.
 	-e cmd  Inline command: append cmd to the list of commands to execute
 	    before reading standard input.  May be repeated.  Implies -s.
 	Exit code scheme: ERR-level errors exit 1; EMOD (unsaved buffer) exits

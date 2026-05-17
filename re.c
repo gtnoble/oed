@@ -29,6 +29,8 @@
  * SUCH DAMAGE.
  */
 
+#include "config.h"
+
 #include <regex.h>
 #include <signal.h>
 #include <stdio.h>
@@ -42,19 +44,118 @@ static char *parse_char_class(char *);
 
 extern int patlock;
 extern int extended_re;
+extern int pcre_re;
+
+
+/* ed_pattern_free: free an ed_pattern_t and all resources it owns */
+void
+ed_pattern_free(ed_pattern_t *pat)
+{
+	if (pat == NULL)
+		return;
+#ifdef HAVE_PCRE2
+	if (pat->is_pcre) {
+		pcre2_match_data_free(pat->pcre_mdata);
+		pcre2_code_free(pat->pcre_code);
+		free(pat);
+		return;
+	}
+#endif
+	regfree(pat->posix);
+	free(pat->posix);
+	free(pat);
+}
+
+
+/* ed_regexec: match pat against txt.
+   If ED_REG_STARTEND is set in flags, rm[0].rm_so/rm_eo define the search
+   window (equivalent to POSIX REG_STARTEND).
+   If ED_REG_NOTBOL is set, the start of the window is not beginning-of-line.
+   nmatch/rm may be 0/NULL for a match-only test.
+   Returns 0 on match, 1 on no match, -1 on error. */
+int
+ed_regexec(ed_pattern_t *pat, const char *txt, int nmatch, ed_match_t *rm,
+    int flags)
+{
+#ifdef HAVE_PCRE2
+	if (pat->is_pcre) {
+		int i, rc;
+		PCRE2_SIZE startoffset = 0;
+		PCRE2_SIZE length = PCRE2_ZERO_TERMINATED;
+		uint32_t options = 0;
+		PCRE2_SIZE *ovector;
+
+		if (flags & ED_REG_STARTEND) {
+			startoffset = (PCRE2_SIZE)rm[0].rm_so;
+			length      = (PCRE2_SIZE)rm[0].rm_eo;
+		}
+		if (flags & ED_REG_NOTBOL)
+			options |= PCRE2_NOTBOL;
+
+		rc = pcre2_match(pat->pcre_code, (PCRE2_SPTR8)txt, length,
+		    startoffset, options, pat->pcre_mdata, NULL);
+		if (rc == PCRE2_ERROR_NOMATCH)
+			return 1;
+		if (rc < 0)
+			return -1;
+		if (nmatch > 0 && rm != NULL) {
+			ovector = pcre2_get_ovector_pointer(pat->pcre_mdata);
+			for (i = 0; i < nmatch && i < rc; i++) {
+				rm[i].rm_so = (int)ovector[2 * i];
+				rm[i].rm_eo = (int)ovector[2 * i + 1];
+			}
+			for (; i < nmatch; i++) {
+				rm[i].rm_so = -1;
+				rm[i].rm_eo = -1;
+			}
+		}
+		return 0;
+	}
+#endif
+	/* POSIX path */
+	{
+		regmatch_t posix_rm[SE_MAX];
+		int posix_flags = 0;
+		int rc, i;
+
+		if (flags & ED_REG_STARTEND)
+			posix_flags |= REG_STARTEND;
+		if (flags & ED_REG_NOTBOL)
+			posix_flags |= REG_NOTBOL;
+
+		if (nmatch > 0 && rm != NULL) {
+			if (flags & ED_REG_STARTEND) {
+				posix_rm[0].rm_so = rm[0].rm_so;
+				posix_rm[0].rm_eo = rm[0].rm_eo;
+			}
+			rc = regexec(pat->posix, txt, (size_t)nmatch, posix_rm,
+			    posix_flags);
+			if (rc != 0)
+				return 1;
+			for (i = 0; i < nmatch; i++) {
+				rm[i].rm_so = (int)posix_rm[i].rm_so;
+				rm[i].rm_eo = (int)posix_rm[i].rm_eo;
+			}
+		} else {
+			rc = regexec(pat->posix, txt, 0, NULL, posix_flags);
+			if (rc != 0)
+				return 1;
+		}
+		return 0;
+	}
+}
 
 
 /* get_compiled_pattern: return pointer to compiled pattern from command
    buffer */
-regex_t *
+ed_pattern_t *
 get_compiled_pattern(void)
 {
-	static regex_t *exp = NULL;
+	static ed_pattern_t *exp = NULL;
 	char errbuf[128] = "";
 
 	char *exps;
 	char delimiter;
-	int n;
 
 	if ((delimiter = *ibufp) == ' ') {
 		seterrmsg("invalid pattern delimiter");
@@ -65,22 +166,80 @@ get_compiled_pattern(void)
 		return exp;
 	} else if ((exps = extract_pattern(delimiter)) == NULL)
 		return NULL;
-	/* buffer alloc'd && not reserved */
+
+	/* free previous pattern if not reserved */
 	if (exp && !patlock)
-		regfree(exp);
-	else if ((exp = malloc(sizeof(regex_t))) == NULL) {
-		perror(NULL);
-		seterrmsg("out of memory");
-		return NULL;
-	}
+		ed_pattern_free(exp);
+	exp = NULL;
 	patlock = 0;
-	if ((n = regcomp(exp, exps, extended_re ? REG_EXTENDED : 0)) != 0) {
-		regerror(n, exp, errbuf, sizeof errbuf);
-		seterrmsg(errbuf);
-		free(exp);
-		return exp = NULL;
+
+#ifdef HAVE_PCRE2
+	if (pcre_re) {
+		int errcode;
+		PCRE2_SIZE erroffset;
+		uint32_t capturecount;
+		pcre2_code *code;
+		pcre2_match_data *mdata;
+		PCRE2_UCHAR8 pcre_errbuf[128];
+
+		if ((exp = malloc(sizeof(ed_pattern_t))) == NULL) {
+			perror(NULL);
+			seterrmsg("out of memory");
+			return NULL;
+		}
+		code = pcre2_compile((PCRE2_SPTR8)exps, PCRE2_ZERO_TERMINATED,
+		    0, &errcode, &erroffset, NULL);
+		if (code == NULL) {
+			pcre2_get_error_message(errcode, pcre_errbuf,
+			    sizeof(pcre_errbuf));
+			seterrmsg((char *)pcre_errbuf);
+			free(exp);
+			return exp = NULL;
+		}
+		pcre2_pattern_info(code, PCRE2_INFO_CAPTURECOUNT, &capturecount);
+		mdata = pcre2_match_data_create_from_pattern(code, NULL);
+		if (mdata == NULL) {
+			pcre2_code_free(code);
+			seterrmsg("out of memory");
+			free(exp);
+			return exp = NULL;
+		}
+		exp->is_pcre    = 1;
+		exp->nsub       = (int)capturecount;
+		exp->posix      = NULL;
+		exp->pcre_code  = code;
+		exp->pcre_mdata = mdata;
+		return exp;
 	}
-	return exp;
+#endif
+
+	/* POSIX path */
+	{
+		int n;
+
+		if ((exp = malloc(sizeof(ed_pattern_t))) == NULL) {
+			perror(NULL);
+			seterrmsg("out of memory");
+			return NULL;
+		}
+		if ((exp->posix = malloc(sizeof(regex_t))) == NULL) {
+			perror(NULL);
+			seterrmsg("out of memory");
+			free(exp);
+			return exp = NULL;
+		}
+		exp->is_pcre = 0;
+		if ((n = regcomp(exp->posix, exps,
+		    extended_re ? REG_EXTENDED : 0)) != 0) {
+			regerror(n, exp->posix, errbuf, sizeof errbuf);
+			seterrmsg(errbuf);
+			free(exp->posix);
+			free(exp);
+			return exp = NULL;
+		}
+		exp->nsub = (int)exp->posix->re_nsub;
+		return exp;
+	}
 }
 
 

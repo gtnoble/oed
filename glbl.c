@@ -47,7 +47,7 @@ static line_t *next_active_node(void);
 int
 build_active_list(int isgcmd)
 {
-	regex_t *pat;
+	ed_pattern_t *pat;
 	line_t *lp;
 	int n;
 	char *s;
@@ -67,7 +67,7 @@ build_active_list(int isgcmd)
 			return ERR;
 		if (isbinary)
 			NUL_TO_NEWLINE(s, lp->len);
-		if ((!regexec(pat, s, 0, NULL, 0)) == isgcmd &&
+		if ((!ed_regexec(pat, s, 0, NULL, 0)) == isgcmd &&
 		    set_active_node(lp) < 0)
 			return ERR;
 	}

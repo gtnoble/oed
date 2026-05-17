@@ -37,6 +37,7 @@
 #include <string.h>
 
 #include "ed.h"
+extern int garrulous;
 
 static char *extract_subst_template(void);
 static int substitute_matching_text(regex_t *, line_t *, int, int);
@@ -165,7 +166,10 @@ search_and_replace(regex_t *pat, int gflag, int kth)
 	if  (nsubs == 0 && !(gflag & GLB)) {
 		seterrmsg("no match");
 		return ERR;
-	} else if ((gflag & (GPR | GLS | GNP)) &&
+	}
+	if (garrulous)
+		fprintf(stderr, "%d substitution(s)\n", nsubs);
+	if ((gflag & (GPR | GLS | GNP)) &&
 	    display_lines(current_addr, current_addr, gflag) < 0)
 		return ERR;
 	return 0;

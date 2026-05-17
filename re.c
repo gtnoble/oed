@@ -41,6 +41,7 @@ static char *extract_pattern(int);
 static char *parse_char_class(char *);
 
 extern int patlock;
+extern int extended_re;
 
 
 /* get_compiled_pattern: return pointer to compiled pattern from command
@@ -73,7 +74,7 @@ get_compiled_pattern(void)
 		return NULL;
 	}
 	patlock = 0;
-	if ((n = regcomp(exp, exps, 0)) != 0) {
+	if ((n = regcomp(exp, exps, extended_re ? REG_EXTENDED : 0)) != 0) {
 		regerror(n, exp, errbuf, sizeof errbuf);
 		seterrmsg(errbuf);
 		free(exp);

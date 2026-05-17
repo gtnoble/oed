@@ -34,6 +34,9 @@
 .Nm ed
 .Op Fl
 .Op Fl s
+.Op Fl l
+.Op Fl v
+.Op Fl E
 .Op Fl p Ar string
 .Op Ar file
 .Sh DESCRIPTION
@@ -130,37 +133,54 @@ See
 for more information on regular expressions.
 .Pp
 The options are as follows:
-.Bl -tag -width "-p string"
+.Bl -tag -width Ds
 .It Fl
 Same as the
 .Fl s
 option
 .Pq deprecated .
-.It Fl p Ar string
-Specifies a command prompt.
-This may be toggled on and off with the
-.Ic P
-command.
 .It Fl s
-Suppress diagnostics.
+Suppresses diagnostics, byte counts, and the
+.Sq \&!
+prompt after a
+.Ic \&!
+command.
 This should be used if
 .Nm
 standard input is from a script.
+.It Fl l
+Do not exit with a non-zero status for failed commands when
+standard input is from a script.
+Useful for batch editing and automation (loose exit status).
+.It Fl v
+Enable verbose help mode; print an explanation for each
+.Sq ?\&
+notification.
+When active, substitution commands also report the number of
+substitutions performed to standard error.
+May be toggled at runtime with the
+.Ic H
+command.
+.It Fl E
+Use extended regular expressions
+.Pq ERE
+for pattern matching instead of basic regular expressions
+.Pq BRE .
+.It Fl p Ar string
+Specifies a command prompt.
+May be toggled on and off with the
+.Ic P
+command.
 .It Ar file
 Specifies the name of a file to read.
 If
 .Ar file
-is prefixed with a
-bang
+is prefixed with a bang
 .Pq Ql \&! ,
-then it is interpreted as a shell command.
-In this case, what is read is the standard output of
-.Ar file
-executed via
-.Xr sh 1 .
-To read a file whose name begins with a bang, prefix the
-name with a backslash
-.Pq Ql \e .
+then it is interpreted as a shell command, and what is read is its
+standard output.
+To read a file whose name begins with a bang, prefix the name with
+.Ql ./ .
 The default filename is set to
 .Ar file
 only if it is not prefixed with a bang.
@@ -438,6 +458,8 @@ By default, explanations are not printed.
 It is recommended that
 .Nm
 scripts begin with this command to aid in debugging.
+When verbose mode is active, substitution commands also report
+the number of substitutions performed to standard error.
 .It Ic h
 Prints an explanation of the last error.
 .It (.) Ns Ic i
@@ -714,6 +736,50 @@ When the shell returns from execution, a
 .Sq \&!
 is printed to the standard output.
 The current line is unchanged.
+.It Ic B
+Prints a one-line buffer summary to standard output:
+.Pp
+.Dl current-addr total-lines modified filename
+.Pp
+.Ar modified
+is
+.Sq 1
+if the buffer has unsaved changes,
+.Sq 0
+otherwise.
+.Ar filename
+is
+.Sq (none)
+if no default filename has been set.
+The current address is unchanged.
+.It (.,.) Ns Ic x
+Copies
+.Pq puts
+the contents of the cut buffer to after the addressed line.
+The current address is set to the address of the last line copied.
+The cut buffer is populated by the
+.Ic y
+command.
+.It (.,.) Ns Ic y
+Copies
+.Pq yanks
+the addressed lines to the cut buffer,
+replacing any previous cut buffer contents.
+The current address is unchanged.
+The cut buffer may be inserted with the
+.Ic x
+command.
+.It Ic N
+Toggles persistent line numbering.
+When active, all lines printed by
+.Ic p ,
+.Ic l ,
+and
+.Ic z
+are prefixed with their line number and a tab, as if the
+.Ic n
+suffix were always in effect.
+The current address is unchanged.
 .El
 .Sh ASYNCHRONOUS EVENTS
 .Bl -tag -width "SIGWINCH"
@@ -817,12 +883,21 @@ specification.
 The commands
 .Cm s
 (to repeat the last substitution),
+.Cm B ,
+.Cm N ,
 .Cm W ,
 .Cm wq ,
+.Cm x ,
+.Cm y ,
 and
 .Cm z
 as well as the address specifier
 .Sq %
+and the flags
+.Fl E ,
+.Fl l ,
+and
+.Fl v
 are extensions to that specification.
 .Pp
 The

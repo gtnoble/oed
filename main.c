@@ -98,6 +98,10 @@ int isglobal;			/* if set, doing a global command */
 int modified;			/* if set, buffer modified since last write */
 int scripted = 0;		/* if set, suppress diagnostics */
 int interactive = 0;		/* if set, we are in interactive mode */
+int loose = 0;		/* if set, don't exit on command errors */
+int extended_re = 0;	/* if set, use extended regular expressions */
+int always_number = 0;	/* if set, always number printed lines */
+int transact = 0;		/* if set, roll back all changes on error */
 
 volatile sig_atomic_t mutex = 0;  /* if set, signals set flags */
 volatile sig_atomic_t sighup = 0; /* if set, sighup received while mutex set */
@@ -112,7 +116,7 @@ int lineno;			/* script line number */
 static char *prompt;		/* command-line prompt */
 static char *dps = "*";		/* default command-line prompt */
 
-static const char usage[] = "usage: %s [-] [-s] [-p string] [file]\n";
+static const char usage[] = "usage: %s [-] [-s] [-l] [-v] [-E] [-p string] [file]\n";
 
 static char *home;		/* home directory */
 
@@ -137,7 +141,7 @@ main(volatile int argc, char ** volatile argv)
 	home = getenv("HOME");
 
 top:
-	while ((c = getopt(argc, argv, "p:sx")) != -1)
+	while ((c = getopt(argc, argv, "p:slvET")) != -1)
 		switch (c) {
 		case 'p':				/* set prompt */
 			dps = prompt = optarg;
@@ -145,8 +149,17 @@ top:
 		case 's':				/* run script */
 			scripted = 1;
 			break;
-		case 'x':				/* use crypt */
-			fprintf(stderr, "crypt unavailable\n?\n");
+		case 'l':				/* loose exit status */
+			loose = 1;
+			break;
+		case 'v':				/* verbose */
+			garrulous = 1;
+			break;
+		case 'E':				/* extended regexp */
+			extended_re = 1;
+			break;
+		case 'T':				/* transaction mode */
+			transact = 1;
 			break;
 		default:
 			fprintf(stderr, usage, argv[0]);
@@ -279,7 +292,12 @@ top:
 					fprintf(stderr,
 					    "script, line %d: %s\n",
 					    lineno, errmsg);
-				quit(2);
+				if (transact) {
+					if (u_current_addr != -1)
+						pop_undo_stack();
+					quit(2);
+				}
+				if (!loose) quit(2);
 			}
 			break;
 		}
@@ -469,6 +487,71 @@ volatile sig_atomic_t cols = 72;	/* wrap column */
 
 /* exec_command: execute the next command in command buffer; return print
    request, if any */
+
+/* cut buffer for y/x commands */
+static line_t *cbuf = NULL;	/* array of yanked line_t copies */
+static int cbufsz = 0;		/* number of slots allocated in cbuf */
+static int cbuflen = 0;		/* number of lines currently in cbuf */
+
+
+/* yank_lines: copy a range of lines into the cut buffer */
+static int
+yank_lines(int from, int to)
+{
+	line_t *lp;
+	int n = to - from + 1;
+	int i;
+
+	if (n > cbufsz) {
+		line_t *tmp = realloc(cbuf, n * sizeof(line_t));
+		if (tmp == NULL) {
+			perror(NULL);
+			seterrmsg("out of memory");
+			return ERR;
+		}
+		cbuf = tmp;
+		cbufsz = n;
+	}
+	lp = get_addressed_line_node(from);
+	for (i = 0; i < n; i++, lp = lp->q_forw) {
+		cbuf[i].seek = lp->seek;
+		cbuf[i].len  = lp->len;
+	}
+	cbuflen = n;
+	return 0;
+}
+
+
+/* put_lines: insert cut buffer contents after the addressed line */
+static int
+put_lines(int addr)
+{
+	undo_t *up = NULL;
+	int i;
+
+	if (cbuflen == 0) {
+		seterrmsg("nothing to put");
+		return ERR;
+	}
+	current_addr = addr;
+	for (i = 0; i < cbuflen; i++) {
+		line_t *lp = dup_line_node(&cbuf[i]);
+		if (lp == NULL)
+			return ERR;
+		SPL1();
+		add_line_node(lp);
+		if (up)
+			up->t = lp;
+		else if ((up = push_undo_stack(UADD, current_addr,
+		    current_addr)) == NULL) {
+			SPL0();
+			return ERR;
+		}
+		modified = 1;
+		SPL0();
+	}
+	return 0;
+}
 int
 exec_command(void)
 {
@@ -491,7 +574,7 @@ exec_command(void)
 	switch ((c = (unsigned char)*ibufp++)) {
 	case 'a':
 		GET_COMMAND_SUFFIX();
-		if (!isglobal) clear_undo_stack();
+		if (!isglobal && !transact) clear_undo_stack();
 		if (append_lines(second_addr) < 0)
 			return ERR;
 		break;
@@ -499,7 +582,7 @@ exec_command(void)
 		if (check_addr_range(current_addr, current_addr) < 0)
 			return ERR;
 		GET_COMMAND_SUFFIX();
-		if (!isglobal) clear_undo_stack();
+		if (!isglobal && !transact) clear_undo_stack();
 		if (delete_lines(first_addr, second_addr) < 0 ||
 		    append_lines(current_addr) < 0)
 			return ERR;
@@ -508,7 +591,7 @@ exec_command(void)
 		if (check_addr_range(current_addr, current_addr) < 0)
 			return ERR;
 		GET_COMMAND_SUFFIX();
-		if (!isglobal) clear_undo_stack();
+		if (!isglobal && !transact) clear_undo_stack();
 		if (delete_lines(first_addr, second_addr) < 0)
 			return ERR;
 		else if ((addr = INC_MOD(current_addr, addr_last)) != 0)
@@ -596,7 +679,7 @@ exec_command(void)
 			second_addr = 1;
 		}
 		GET_COMMAND_SUFFIX();
-		if (!isglobal) clear_undo_stack();
+		if (!isglobal && !transact) clear_undo_stack();
 		if (append_lines(second_addr - 1) < 0)
 			return ERR;
 		break;
@@ -604,7 +687,7 @@ exec_command(void)
 		if (check_addr_range(current_addr, current_addr + 1) < 0)
 			return ERR;
 		GET_COMMAND_SUFFIX();
-		if (!isglobal) clear_undo_stack();
+		if (!isglobal && !transact) clear_undo_stack();
 		if (first_addr != second_addr &&
 		    join_lines(first_addr, second_addr) < 0)
 			return ERR;
@@ -636,7 +719,7 @@ exec_command(void)
 			return ERR;
 		}
 		GET_COMMAND_SUFFIX();
-		if (!isglobal) clear_undo_stack();
+		if (!isglobal && !transact) clear_undo_stack();
 		if (move_lines(addr) < 0)
 			return ERR;
 		break;
@@ -682,7 +765,7 @@ exec_command(void)
 		if ((fnp = get_filename(0)) == NULL)
 			return ERR;
 		GET_COMMAND_SUFFIX();
-		if (!isglobal) clear_undo_stack();
+		if (!isglobal && !transact) clear_undo_stack();
 		if ((addr = read_file(fnp, second_addr)) < 0)
 			return ERR;
 		else if (addr)
@@ -776,7 +859,7 @@ exec_command(void)
 		if (check_addr_range(current_addr, current_addr) < 0)
 			return ERR;
 		GET_COMMAND_SUFFIX();
-		if (!isglobal) clear_undo_stack();
+		if (!isglobal && !transact) clear_undo_stack();
 		if (search_and_replace(pat, sgflag, sgnum) < 0)
 			return ERR;
 		break;
@@ -785,7 +868,7 @@ exec_command(void)
 			return ERR;
 		GET_THIRD_ADDR(addr);
 		GET_COMMAND_SUFFIX();
-		if (!isglobal) clear_undo_stack();
+		if (!isglobal && !transact) clear_undo_stack();
 		if (copy_lines(addr) < 0)
 			return ERR;
 		break;
@@ -823,13 +906,11 @@ exec_command(void)
 			gflag = EMOD;
 		break;
 	case 'x':
-		if (addr_cnt > 0) {
-			seterrmsg("unexpected address");
-			return ERR;
-		}
 		GET_COMMAND_SUFFIX();
-		seterrmsg("crypt unavailable");
-		return ERR;
+		if (!isglobal && !transact) clear_undo_stack();
+		if (put_lines(second_addr) < 0)
+			return ERR;
+		break;
 	case 'z':
 		first_addr = 1;
 		if (check_addr_range(first_addr, current_addr + 1) < 0)
@@ -862,6 +943,30 @@ exec_command(void)
 		first_addr = 1;
 		if (check_addr_range(first_addr, current_addr + 1) < 0
 		 || display_lines(second_addr, second_addr, 0) < 0)
+			return ERR;
+		break;
+	case 'B':
+		if (addr_cnt > 0) {
+			seterrmsg("unexpected address");
+			return ERR;
+		}
+		GET_COMMAND_SUFFIX();
+		printf("%d %d %d %s\n", current_addr, addr_last,
+		    modified, old_filename[0] ? old_filename : "(none)");
+		break;
+	case 'N':
+		if (addr_cnt > 0) {
+			seterrmsg("unexpected address");
+			return ERR;
+		}
+		GET_COMMAND_SUFFIX();
+		always_number = 1 - always_number;
+		break;
+	case 'y':
+		if (check_addr_range(current_addr, current_addr) < 0)
+			return ERR;
+		GET_COMMAND_SUFFIX();
+		if (yank_lines(first_addr, second_addr) < 0)
 			return ERR;
 		break;
 	default:
@@ -1216,6 +1321,7 @@ delete_lines(int from, int to)
 int
 display_lines(int from, int to, int gflag)
 {
+	if (always_number) gflag |= GNP;
 	line_t *bp;
 	line_t *ep;
 	char *s;

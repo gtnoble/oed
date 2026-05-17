@@ -203,5 +203,7 @@ extern int loose;
 extern int extended_re;
 extern int always_number;
 extern int transact;
+extern int had_error;
 extern int u_current_addr;
 extern int u_addr_last;
+extern int success_token;

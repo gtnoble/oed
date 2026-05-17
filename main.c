@@ -76,6 +76,9 @@ static int copy_lines(int);
 static int mark_line_node(line_t *, int);
 static int get_marked_node_addr(int);
 static line_t *dup_line_node(line_t *);
+static int enqueue_write(int, int, const char *, int);
+static int flush_write_queue(void);
+static void free_write_queue(void);
 
 sigjmp_buf env;
 
@@ -102,6 +105,7 @@ int loose = 0;		/* if set, don't exit on command errors */
 int extended_re = 0;	/* if set, use extended regular expressions */
 int always_number = 0;	/* if set, always number printed lines */
 int transact = 0;		/* if set, roll back all changes on error */
+int had_error = 0;		/* if set, an error occurred during -lT transaction */
 
 volatile sig_atomic_t mutex = 0;  /* if set, signals set flags */
 volatile sig_atomic_t sighup = 0; /* if set, sighup received while mutex set */
@@ -116,9 +120,13 @@ int lineno;			/* script line number */
 static char *prompt;		/* command-line prompt */
 static char *dps = "*";		/* default command-line prompt */
 
-static const char usage[] = "usage: %s [-] [-s] [-l] [-v] [-E] [-p string] [file]\n";
+static const char usage[] = "usage: %s [-] [-s] [-l] [-v] [-E] [-n] [-A] [-e cmd] [-p string] [file]\n";
 
 static char *home;		/* home directory */
+
+static char *e_cmds[256];	/* inline command strings from -e */
+static int n_ecmds = 0;		/* number of -e commands */
+int success_token = 0;		/* if set, print OK after each successful command */
 
 void
 seterrmsg(char *s)
@@ -141,7 +149,7 @@ main(volatile int argc, char ** volatile argv)
 	home = getenv("HOME");
 
 top:
-	while ((c = getopt(argc, argv, "p:slvET")) != -1)
+	while ((c = getopt(argc, argv, "p:slvETnAMe:")) != -1)
 		switch (c) {
 		case 'p':				/* set prompt */
 			dps = prompt = optarg;
@@ -161,6 +169,23 @@ top:
 		case 'T':				/* transaction mode */
 			transact = 1;
 			break;
+		case 'n':				/* always number */
+			always_number = 1;
+			break;
+		case 'A':				/* success token */
+			success_token = 1;
+			break;
+		case 'M':				/* machine/agent mode: -s -A -v -l -T */
+			scripted = 1;
+			success_token = 1;
+			garrulous = 1;
+			loose = 1;
+			transact = 1;
+			break;
+		case 'e':				/* inline command */
+			if (n_ecmds < 256)
+				e_cmds[n_ecmds++] = optarg;
+			break;
 		default:
 			fprintf(stderr, usage, argv[0]);
 			exit(1);
@@ -175,6 +200,25 @@ top:
 		}
 		argv++;
 		argc--;
+	}
+	if (n_ecmds > 0) {
+		int pfd[2];
+		int ei;
+		if (pipe(pfd) < 0) {
+			perror(NULL);
+			exit(1);
+		}
+		for (ei = 0; ei < n_ecmds; ei++) {
+			write(pfd[1], e_cmds[ei], strlen(e_cmds[ei]));
+			write(pfd[1], "\n", 1);
+		}
+		close(pfd[1]);
+		if (dup2(pfd[0], STDIN_FILENO) < 0) {
+			perror(NULL);
+			exit(1);
+		}
+		close(pfd[0]);
+		scripted = 1;
 	}
 
 	if (!(interactive = isatty(0))) {
@@ -243,8 +287,23 @@ top:
 				modified = 0;
 				status = EMOD;
 				continue;
-			} else
+			} else {
+				if (transact && had_error) {
+					if (u_current_addr != -1)
+						pop_undo_stack();
+					free_write_queue();
+					quit(1);
+				} else if (transact) {
+					if (flush_write_queue() < 0) {
+						if (garrulous)
+							fprintf(stderr,
+							    "script, line %d: %s\n",
+							    lineno, errmsg);
+						quit(1);
+					}
+				}
 				quit(0);
+			}
 		} else if (ibuf[n - 1] != '\n') {
 			/* discard line */
 			seterrmsg("unexpected end-of-file");
@@ -257,10 +316,27 @@ top:
 		    (status = exec_command()) >= 0)
 			if (!status || (status &&
 			    (status = display_lines(current_addr, current_addr,
-				status)) >= 0))
-				continue;
+				status)) >= 0)) {
+			if (success_token)
+				fputs("OK\n", stdout);
+			continue;
+		}
 		switch (status) {
 		case EOF:
+			if (transact && had_error) {
+				if (u_current_addr != -1)
+					pop_undo_stack();
+				free_write_queue();
+				quit(1);
+			} else if (transact) {
+				if (flush_write_queue() < 0) {
+					if (garrulous)
+						fprintf(stderr,
+						    "script, line %d: %s\n",
+						    lineno, errmsg);
+					quit(1);
+				}
+			}
 			quit(0);
 			break;
 		case EMOD:
@@ -292,12 +368,14 @@ top:
 					fprintf(stderr,
 					    "script, line %d: %s\n",
 					    lineno, errmsg);
-				if (transact) {
+				if (transact && loose) {
+					had_error = 1;
+				} else if (transact) {
 					if (u_current_addr != -1)
 						pop_undo_stack();
-					quit(2);
-				}
-				if (!loose) quit(2);
+					free_write_queue();
+					quit(1);
+				} else if (!loose) quit(1);
 			}
 			break;
 		}
@@ -489,53 +567,54 @@ volatile sig_atomic_t cols = 72;	/* wrap column */
    request, if any */
 
 /* cut buffer for y/x commands */
-static line_t *cbuf = NULL;	/* array of yanked line_t copies */
-static int cbufsz = 0;		/* number of slots allocated in cbuf */
-static int cbuflen = 0;		/* number of lines currently in cbuf */
+#define NREGS 27
+static line_t *cbuf[NREGS];	/* cut buffers: [0]=unnamed, [1-26]=a-z */
+static int cbufsz[NREGS];	/* slots allocated per register */
+static int cbuflen[NREGS];	/* lines currently in each register */
 
 
 /* yank_lines: copy a range of lines into the cut buffer */
 static int
-yank_lines(int from, int to)
+yank_lines(int from, int to, int reg)
 {
 	line_t *lp;
 	int n = to - from + 1;
 	int i;
 
-	if (n > cbufsz) {
-		line_t *tmp = realloc(cbuf, n * sizeof(line_t));
+	if (n > cbufsz[reg]) {
+		line_t *tmp = realloc(cbuf[reg], n * sizeof(line_t));
 		if (tmp == NULL) {
 			perror(NULL);
 			seterrmsg("out of memory");
 			return ERR;
 		}
-		cbuf = tmp;
-		cbufsz = n;
+		cbuf[reg] = tmp;
+		cbufsz[reg] = n;
 	}
 	lp = get_addressed_line_node(from);
 	for (i = 0; i < n; i++, lp = lp->q_forw) {
-		cbuf[i].seek = lp->seek;
-		cbuf[i].len  = lp->len;
+		cbuf[reg][i].seek = lp->seek;
+		cbuf[reg][i].len  = lp->len;
 	}
-	cbuflen = n;
+	cbuflen[reg] = n;
 	return 0;
 }
 
 
 /* put_lines: insert cut buffer contents after the addressed line */
 static int
-put_lines(int addr)
+put_lines(int addr, int reg)
 {
 	undo_t *up = NULL;
 	int i;
 
-	if (cbuflen == 0) {
+	if (cbuflen[reg] == 0) {
 		seterrmsg("nothing to put");
 		return ERR;
 	}
 	current_addr = addr;
-	for (i = 0; i < cbuflen; i++) {
-		line_t *lp = dup_line_node(&cbuf[i]);
+	for (i = 0; i < cbuflen[reg]; i++) {
+		line_t *lp = dup_line_node(&cbuf[reg][i]);
 		if (lp == NULL)
 			return ERR;
 		SPL1();
@@ -552,6 +631,82 @@ put_lines(int addr)
 	}
 	return 0;
 }
+
+#define MAXMARK 26			/* max number of marks */
+static line_t *mark[MAXMARK];		/* line markers */
+static int markno;			/* line marker count */
+
+/* write queue for transaction mode */
+typedef struct write_op {
+	int first;
+	int second;
+	char filename[PATH_MAX];
+	int append;
+} write_op_t;
+
+static write_op_t *write_queue = NULL;
+static int n_write_ops = 0;
+static int write_queue_sz = 0;
+
+static int
+enqueue_write(int first, int second, const char *fn, int append)
+{
+	write_op_t *p;
+	int newsz;
+
+	if (n_write_ops >= write_queue_sz) {
+		newsz = write_queue_sz ? write_queue_sz * 2 : 4;
+		SPL1();
+		p = realloc(write_queue, newsz * sizeof(write_op_t));
+		if (p == NULL) {
+			seterrmsg("out of memory");
+			SPL0();
+			return ERR;
+		}
+		write_queue = p;
+		write_queue_sz = newsz;
+		SPL0();
+	}
+	write_queue[n_write_ops].first = first;
+	write_queue[n_write_ops].second = second;
+	strlcpy(write_queue[n_write_ops].filename, fn,
+	    sizeof write_queue[n_write_ops].filename);
+	write_queue[n_write_ops].append = append;
+	n_write_ops++;
+	return 0;
+}
+
+static int
+flush_write_queue(void)
+{
+	int i, addr;
+
+	for (i = 0; i < n_write_ops; i++) {
+		if ((addr = write_file(write_queue[i].filename,
+		    write_queue[i].append ? "a" : "w",
+		    write_queue[i].first, write_queue[i].second)) < 0) {
+			free(write_queue);
+			write_queue = NULL;
+			n_write_ops = write_queue_sz = 0;
+			return ERR;
+		}
+		if (addr == addr_last)
+			modified = 0;
+	}
+	free(write_queue);
+	write_queue = NULL;
+	n_write_ops = write_queue_sz = 0;
+	return 0;
+}
+
+static void
+free_write_queue(void)
+{
+	free(write_queue);
+	write_queue = NULL;
+	n_write_ops = write_queue_sz = 0;
+}
+
 int
 exec_command(void)
 {
@@ -569,8 +724,22 @@ exec_command(void)
 	int addr = 0;
 	int n = 0;
 	int c;
+	int reg = 0;		/* register for y/x commands */
 
 	SKIP_BLANKS();
+	if (*ibufp == '"') {
+		ibufp++;
+		if (!islower((unsigned char)*ibufp)) {
+			seterrmsg("invalid register");
+			return ERR;
+		}
+		reg = (unsigned char)*ibufp++ - 'a' + 1;
+		SKIP_BLANKS();
+		if (*ibufp != 'y' && *ibufp != 'x') {
+			seterrmsg("register only valid with y and x");
+			return ERR;
+		}
+	}
 	switch ((c = (unsigned char)*ibufp++)) {
 	case 'a':
 		GET_COMMAND_SUFFIX();
@@ -610,6 +779,10 @@ exec_command(void)
 			return ERR;
 		} else if ((fnp = get_filename(1)) == NULL)
 			return ERR;
+		if (transact && *fnp == '!') {
+			seterrmsg("shell escapes not permitted in transaction mode");
+			return ERR;
+		}
 		GET_COMMAND_SUFFIX();
 		if (delete_lines(1, addr_last) < 0)
 			return ERR;
@@ -764,6 +937,10 @@ exec_command(void)
 			second_addr = addr_last;
 		if ((fnp = get_filename(0)) == NULL)
 			return ERR;
+		if (transact && *fnp == '!') {
+			seterrmsg("shell escapes not permitted in transaction mode");
+			return ERR;
+		}
 		GET_COMMAND_SUFFIX();
 		if (!isglobal && !transact) clear_undo_stack();
 		if ((addr = read_file(fnp, second_addr)) < 0)
@@ -892,23 +1069,34 @@ exec_command(void)
 			return ERR;
 		} else if ((fnp = get_filename(0)) == NULL)
 			return ERR;
+		if (transact && *fnp == '!') {
+			seterrmsg("shell escapes not permitted in transaction mode");
+			return ERR;
+		}
 		if (addr_cnt == 0 && !addr_last)
 			first_addr = second_addr = 0;
 		else if (check_addr_range(1, addr_last) < 0)
 			return ERR;
 		GET_COMMAND_SUFFIX();
-		if ((addr = write_file(fnp, (c == 'W') ? "a" : "w",
-		    first_addr, second_addr)) < 0)
-			return ERR;
-		else if (addr == addr_last && *fnp != '!')
+		if (transact) {
+			if (enqueue_write(first_addr, second_addr, fnp,
+			    c == 'W') < 0)
+				return ERR;
 			modified = 0;
-		else if (modified && !scripted && n == 'q')
-			gflag = EMOD;
+		} else {
+			if ((addr = write_file(fnp, (c == 'W') ? "a" : "w",
+			    first_addr, second_addr)) < 0)
+				return ERR;
+			else if (addr == addr_last && *fnp != '!')
+				modified = 0;
+			else if (modified && !scripted && n == 'q')
+				gflag = EMOD;
+		}
 		break;
 	case 'x':
 		GET_COMMAND_SUFFIX();
 		if (!isglobal && !transact) clear_undo_stack();
-		if (put_lines(second_addr) < 0)
+		if (put_lines(second_addr, reg) < 0)
 			return ERR;
 		break;
 	case 'z':
@@ -930,6 +1118,9 @@ exec_command(void)
 	case '!':
 		if (addr_cnt > 0) {
 			seterrmsg("unexpected address");
+			return ERR;
+		} else if (transact) {
+			seterrmsg("shell escapes not permitted in transaction mode");
 			return ERR;
 		} else if ((sflags = get_shell_command()) < 0)
 			return ERR;
@@ -966,8 +1157,22 @@ exec_command(void)
 		if (check_addr_range(current_addr, current_addr) < 0)
 			return ERR;
 		GET_COMMAND_SUFFIX();
-		if (yank_lines(first_addr, second_addr) < 0)
+		if (yank_lines(first_addr, second_addr, reg) < 0)
 			return ERR;
+		break;
+	case 'K':
+		if (addr_cnt > 0) {
+			seterrmsg("unexpected address");
+			return ERR;
+		}
+		GET_COMMAND_SUFFIX();
+		for (n = 0; n < MAXMARK; n++) {
+			if (mark[n] != NULL) {
+				addr = get_line_node_addr(mark[n]);
+				if (addr >= 0)
+					printf("'%c %d\n", 'a' + n, addr);
+			}
+		}
 		break;
 	default:
 		seterrmsg("unknown command");
@@ -1342,10 +1547,6 @@ display_lines(int from, int to, int gflag)
 }
 
 
-#define MAXMARK 26			/* max number of marks */
-
-static line_t *mark[MAXMARK];		/* line markers */
-static int markno;			/* line marker count */
 
 /* mark_line_node: set a line node mark */
 static int

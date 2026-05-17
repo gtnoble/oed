@@ -38,6 +38,10 @@
 .Op Fl v
 .Op Fl E
 .Op Fl T
+.Op Fl n
+.Op Fl A
+.Op Fl M
+.Op Fl e Ar cmd
 .Op Fl p Ar string
 .Op Ar file
 .Sh DESCRIPTION
@@ -153,6 +157,10 @@ standard input is from a script.
 Do not exit with a non-zero status for failed commands when
 standard input is from a script.
 Useful for batch editing and automation (loose exit status).
+Combined with
+.Fl T ,
+all commands are attempted even if some fail; the wet run commits only if
+every command succeeded.
 .It Fl v
 Enable verbose help mode; print an explanation for each
 .Sq ?\&
@@ -169,16 +177,67 @@ for pattern matching instead of basic regular expressions
 .Pq BRE .
 .It Fl T
 Transaction mode.
-On any error when standard input is from a script,
-roll back all in-memory changes made since startup and exit with status 2.
-Intended for use by scripts and automated tools that require all-or-nothing
-edits: place the
+Implements a dry-run/wet-run model: all editing commands execute normally
+in memory, but
 .Ic w
-command as the final command so that the file is written only if every
-preceding command succeeds.
-Note that a
-.Ic w
-command executed before the failing command cannot be undone on disk.
+and
+.Ic W
+commands are deferred and do not touch the disk until the script exits
+cleanly.
+Shell escapes
+.Pq Ic ! , Ic r\ !cmd , Ic e\ !cmd , Ic w\ !cmd
+are forbidden and return an error.
+On any error, all in-memory changes are rolled back and the process exits
+with status 1; no deferred writes are executed.
+If the script exits without error, all deferred writes are executed in
+order and the process exits with status 0.
+Combined with
+.Fl l ,
+all commands are attempted even after errors; the wet run fires only if
+.Em every
+command succeeded.
+.It Fl n
+Enable persistent line numbering at startup.
+Equivalent to executing the
+.Ic N
+command immediately after startup.
+.It Fl A
+After each successful command print
+.Ql OK
+followed by a newline to standard output,
+providing an unambiguous per-command success signal for pipe-driving agents.
+Errors still produce
+.Ql \&?
+and do not print
+.Ql OK .
+.It Fl M
+Machine/agent mode.
+Enables
+.Fl s ,
+.Fl A ,
+.Fl v ,
+.Fl l ,
+and
+.Fl T
+simultaneously.
+Intended as a convenience flag for agents: suppresses noise, emits per-command
+.Ql OK
+or
+.Ql \&?
+signals, explains errors verbosely, continues past errors, and commits writes
+only if the entire script succeeds.
+.Fl n
+and
+.Fl E
+are not implied and must be given separately if needed.
+.It Fl e Ar cmd
+Append
+.Ar cmd
+as an editor command to the list of inline commands.
+May be repeated; commands are executed in the order given,
+as if typed at the command prompt, before any standard input is read.
+Implies
+.Fl s .
 .It Fl p Ar string
 Specifies a command prompt.
 May be toggled on and off with the
@@ -773,6 +832,16 @@ The current address is set to the address of the last line copied.
 The cut buffer is populated by the
 .Ic y
 command.
+.Pp
+If preceded by a
+.Ql \&".Ar r
+register prefix, where
+.Ar r
+is a lower case letter
+.Pq Ql a Ns \(en Ns Ql z ,
+the named register
+.Ar r
+is used instead of the default unnamed register.
 .It (.,.) Ns Ic y
 Copies
 .Pq yanks
@@ -782,6 +851,16 @@ The current address is unchanged.
 The cut buffer may be inserted with the
 .Ic x
 command.
+.Pp
+If preceded by a
+.Ql \&".Ar r
+register prefix, where
+.Ar r
+is a lower case letter
+.Pq Ql a Ns \(en Ns Ql z ,
+the addressed lines are stored in the named register
+.Ar r
+instead of the default unnamed register.
 .It Ic N
 Toggles persistent line numbering.
 When active, all lines printed by
@@ -792,6 +871,20 @@ and
 are prefixed with their line number and a tab, as if the
 .Ic n
 suffix were always in effect.
+The current address is unchanged.
+.It Ic K
+Lists all currently set line marks to standard output,
+one per line in alphabetical order.
+Each line has the form:
+.Pp
+.Dl 'x addr
+.Pp
+where
+.Ar x
+is the mark letter and
+.Ar addr
+is the current address of the marked line.
+Takes no address.
 The current address is unchanged.
 .El
 .Sh ASYNCHRONOUS EVENTS
@@ -828,7 +921,20 @@ where
 attempts to write the buffer if the terminal hangs up
 .El
 .Sh EXIT STATUS
-.Ex -std ed
+.Bl -tag -width Ds
+.It 0
+Clean exit.
+.It 1
+A command or address error occurred
+.Pq ERR .
+.It 2
+Standard input was from a script and the buffer has unsaved changes
+.Pq EMOD ,
+or a fatal file I/O error occurred.
+.It 3
+Internal consistency error
+.Pq panic .
+.El
 .Sh DIAGNOSTICS
 When an error occurs,
 .Nm
@@ -897,6 +1003,7 @@ The commands
 .Cm s
 (to repeat the last substitution),
 .Cm B ,
+.Cm K ,
 .Cm N ,
 .Cm W ,
 .Cm wq ,
@@ -904,14 +1011,24 @@ The commands
 .Cm y ,
 and
 .Cm z
-as well as the address specifier
+as well as named register prefixes
+.Pq Ql \&".Ar r
+for the
+.Cm y
+and
+.Cm x
+commands, the address specifier
 .Sq %
 and the flags
+.Fl A ,
 .Fl E ,
+.Fl e ,
 .Fl l ,
+.Fl n ,
 .Fl T ,
+.Fl v ,
 and
-.Fl v
+.Fl M
 are extensions to that specification.
 .Pp
 The

@@ -3,14 +3,14 @@
 _current_file="t10_errors"
 . "$(dirname "$0")/../harness.sh"
 
-# Bad absolute address prints ? and exits 2
+# Bad absolute address prints ? and exits 1
 run_test "bad absolute address prints question mark" \
     "$(printf '999p\nQ\n')" \
     "?"
 
-run_test_exit "bad absolute address exits with code 2" \
+run_test_exit "bad absolute address exits with code 1" \
     "$(printf '999p\nQ\n')" \
-    "2"
+    "1"
 
 # Address out of range: 0p on empty buffer
 run_test "address out of range on empty buffer" \
@@ -47,9 +47,22 @@ run_test_exit "clean run exits 0" \
     "$(printf 'a\nfoo\n.\n,p\nQ\n')" \
     "0"
 
-# Exit 2 on any error
-run_test_exit "error run exits 2" \
+# Exit 1 on ERR-level error
+run_test_exit "error run exits 1" \
     "$(printf '999p\nQ\n')" \
-    "2"
+    "1"
 
+
+# EMOD: unsaved-buffer quit exits 2 (distinct from ERR which exits 1)
+# Run without -s so 'q' triggers EMOD path.
+printf 'a\nfoo\n.\nq\n' | "$OED" >/dev/null 2>&1
+_emod_exit=$?
+if [ "$_emod_exit" = "2" ]; then
+    _passes=$((_passes + 1))
+    printf 'PASS  %s: unsaved buffer on q exits 2\n' "$_current_file"
+else
+    _failures=$((_failures + 1))
+    printf 'FAIL  %s: unsaved buffer on q exits 2 (expected 2, got %s)\n' \
+        "$_current_file" "$_emod_exit"
+fi
 report

@@ -132,7 +132,7 @@ functional area:
 | `t09_regex.sh` | BRE (default) and ERE (`-E`) |
 | `t10_errors.sh` | `?` error token, exit codes, bad addresses |
 | `t11_new_commands.sh` | `B`, `N`, `y`, `x` commands; error cases, dot/modified side-effects |
-| `t12_flags.sh` | `-l` loose (continues, exits 0), `-T` transaction (exits 2), `-E` ERE |
+| `t12_flags.sh` | `-l` loose, `-T` transaction (dry-run/wet-run, deferred writes, shell escape ban), `-lT` combined, `-M` agent mode |
 | `t13_shell_escape.sh` | `!cmd` shell escape |
 
 **Tier 2 — C89 unit tests** (`tests/unit/`)  
@@ -195,7 +195,7 @@ existing `test_utils` pattern, and add the binary name to `TESTBINS`.
 | `isglobal` | Inside a global command execution |
 | `isbinary` | File contains NUL bytes |
 | `extended_re` | Use ERE instead of BRE (`-E` flag) |
-| `always_number` | Always number output lines (toggled by `N` command at runtime; no startup flag) |
+| `always_number` | Always number output lines (toggled by `N` command at runtime; also enabled by `-n` startup flag) |
 | `loose` | Suppress some POSIX address errors |
 | `ibuf`, `ibufp`, `ibufsz` | Input line buffer and pointer |
 | `mutex`, `sighup`, `sigint` | Signal deferral state |
@@ -242,23 +242,29 @@ output were moved from `stderr` to `stdout`.  An agent reading only stdout
 receives both normal output and error signals on one stream, with no need to
 multiplex descriptors.
 
-**Exit codes** — oed uses three codes, aligned with GNU ed:
+**Exit codes** — oed uses four codes, aligned with GNU ed:
 
 | Code | Meaning |
 |---|---|
 | `0` | Clean exit |
-| `2` | Recoverable error or unsaved-buffer warning |
+| `1` | ERR — command or address error |
+| `2` | EMOD — unsaved buffer on quit, or fatal file I/O error |
 | `3` | Fatal / internal error |
 
-**Agent-friendly flags** (current `getopt` string: `p:slvET`):
+**Agent-friendly flags** (current `getopt` string: `p:slvETnAMe:`):
 
 | Flag | Effect |
 |---|---|
 | `-s` | Scripted mode — suppresses byte-count output |
-| `-l` | Loose mode — continue past `ERR`-level errors instead of exiting (continue-on-error) |
-| `-T` | Transaction mode — on any `ERR`-level error, roll back all in-memory changes made since startup and exit 2.  Requires that `w` not be called before the failing command; a `w` already executed cannot be undone on disk. |
+| `-l` | Loose mode — continue past `ERR`-level errors instead of exiting; combine with `-T` for attempt-all/commit-if-clean semantics |
+| `-T` | Transaction mode (dry-run/wet-run) — `w`/`W` are deferred; shell escapes forbidden; on any error roll back in-memory and exit 1 without writing; on clean exit execute all deferred writes |
 | `-v` | Garrulous mode — print explanation for every `?` to stderr |
 | `-E` | Use ERE instead of BRE |
+| `-n` | Always-number — prefix every output line with its line number; equivalent to running `N` at startup |
+| `-A` | Success token — print `OK` after every successful command; errors print `?` and do not print `OK` |
+| `-e cmd` | Inline command — execute `cmd` as a command before reading stdin; repeatable; implies `-s` |
+| `-lT` | Combined loose + transaction — attempt all commands, commit writes only if every command succeeded; exit 1 and roll back if any error occurred |
+| `-M` | Machine/agent mode — convenience flag enabling `-s -A -v -l -T` simultaneously; does not imply `-n` or `-E` |
 
 **Non-standard commands already implemented:**
 
@@ -266,34 +272,40 @@ multiplex descriptors.
 |---|---|---|
 | `B` | `B` | Print buffer state: `current_addr addr_last modified filename` on one line — machine-readable snapshot |
 | `N` | `N` | Toggle `always_number`: prefix every subsequent output line with its line number |
-| `y` | `(.,.)y` | Yank addressed lines into the (single) cut buffer |
-| `x` | `(.)x` | Put cut buffer contents after the addressed line |
+| `y` | `(.,.)y` | Yank addressed lines into the named or unnamed cut buffer (prefix with `"r` to use named register r) |
+| `x` | `(.)x` | Put named or unnamed register contents after the addressed line (prefix with `"r` to use named register r) |
+| `K` | `K` | List all currently set marks; one line per mark in the form `'x addr` |
 
-Note: `always_number` has no corresponding startup flag; use the `N` command
-at the top of a script to enable numbered output from the start.
 
 ### Features not yet implemented
 
-The following were identified as useful for agents but are absent from the
-current codebase.  They are free of conflicts with GNU ed's existing flag and
-command namespace:
+(none — all features listed above have been implemented.)
 
-| Feature | Proposed syntax | Notes |
-|---|---|---|
-| Inline command string | `-e 'cmd'` flag | Mirrors `sed -e`; avoids temp script files |
-| Always-number startup flag | `-n` flag | Wires `always_number=1` at init; `N` command covers runtime use |
-| Per-command success token | e.g. `-A` flag | Prints `OK\n` to stdout after every successful command so a pipe-driving agent can detect boundaries |
-| Named yank registers | `"a y` / `"a x` | `"` is unused in command position; single cut buffer currently |
-| Active marks query | `K` command | No-address command listing all currently set `'a`–`'z` marks |
-| Exit code for `ERR` vs `EMOD` | — | Both currently exit `2`; separating them (e.g. `EMOD`→`2`, `ERR`→`1`) would align with GNU ed's full 0/1/2/3 scheme |
+### Features that will not be implemented
+
+The following have been considered and explicitly rejected as out of scope for
+`oed`.  Do not reopen or implement these.
+
+| Feature | Reason |
+|---|---|
+| JSON output mode (e.g. `-J` flag) | Structured serialisation formats go beyond what a line editor is expected to provide.  Callers that need structured output should post-process `oed`'s existing plain-text output (including the `B` command's machine-readable snapshot) with an external tool such as `jq` or `awk`. |
+
+## Required Practices
+
+Follow these rules on every change.
+
+- **Add tests for every new feature.**  Add `run_test` calls to the
+  appropriate `tests/sh/tNN_*.sh` file (or create a new one for a distinct
+  functional area).  Tests must be committed in the same change as the code
+  and documentation they cover.
+- **Update all three documentation files.**  Every change that adds, removes,
+  or alters a flag, command, or behaviour must be reflected in `ed.1` (man
+  page), `POSIX` (extensions / deviations summary), and `AGENTS.md` (AI agent
+  reference), in the same commit.
+
 
 ## What NOT to Do
 
-- Do not commit code changes without updating documentation.  Every change
-  that adds, removes, or alters a flag, command, or behaviour must be
-  reflected in **all three** of: `ed.1` (man page), `POSIX` (extensions /
-  deviations summary), and `AGENTS.md` (AI agent reference).  Treat
-  documentation as part of the same commit as the code.
 - Do not run `./configure` unnecessarily — it overwrites `Makefile` and
   `config.h`, potentially changing build settings.
 - Do not add a test framework without first verifying it builds with all

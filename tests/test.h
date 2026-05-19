@@ -1,4 +1,4 @@
-/* test.h: minimal C89 unit-test assertion macros for oed.
+/* test.h: minimal C89 unit-test assertion macros for hed.
  * No external dependencies; include once per test binary's main source file.
  *
  * Usage:

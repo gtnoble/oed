@@ -310,7 +310,11 @@ put_tty_line(char *s, int l, int n, int gflag)
 
 	if (gflag & GNP) {
 		printf("%d\t", n);
-		col = 8;
+		col += 8;
+	}
+	if (gflag & GHP) {
+		printf("@%08lx\t", adler32_line(s, l));
+		col += 10;
 	}
 	for (; l--; s++) {
 		if ((gflag & GLS) && ++col > cols) {

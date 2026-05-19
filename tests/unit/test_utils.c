@@ -1,4 +1,4 @@
-/* test_utils.c: C89 unit tests for oed utility functions.
+/* test_utils.c: C89 unit tests for hed utility functions.
  * Tests: has_trailing_escape, strip_escapes, translit_text
  * Link against all editor object files except main.o.
  */

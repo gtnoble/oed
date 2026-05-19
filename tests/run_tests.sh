@@ -1,5 +1,5 @@
 #!/bin/sh
-# run_tests.sh: master test runner for oed.
+# run_tests.sh: master test runner for hed.
 # Must be run from the project root: sh tests/run_tests.sh
 
 # Locate project root (one level above this script's directory)
@@ -7,7 +7,7 @@ TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$TESTS_DIR/.." && pwd)"
 cd "$ROOT"
 
-export OED="./oed"
+export HED="./hed"
 
 total_pass=0
 total_fail=0

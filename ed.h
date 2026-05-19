@@ -74,6 +74,7 @@ typedef struct {
 #define GLS 004		/* list after command */
 #define GNP 010		/* enumerate after command */
 #define GSG 020		/* global substitute */
+#define GHP 040		/* print hash before line */
 
 /* Line node */
 typedef struct	line {
@@ -208,6 +209,7 @@ char *translit_text(char *, int, int, int);
 void unmark_line_node(line_t *);
 void unset_active_nodes(line_t *, line_t *);
 int write_file(char *, char *, int, int);
+unsigned long adler32_line(const char *, int);
 
 /* global buffers */
 extern char *ibuf;
@@ -233,6 +235,7 @@ extern int loose;
 extern int extended_re;
 extern int pcre_re;
 extern int always_number;
+extern int always_hash;
 extern int transact;
 extern int had_error;
 extern int u_current_addr;

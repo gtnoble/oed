@@ -277,6 +277,26 @@ init_buffers(void)
 }
 
 
+
+/* adler32_line: compute Adler-32 hash of a single line's stored bytes
+   followed by a synthetic newline, with standard initialisation (s1=1,
+   s2=0) and modulus 65521.  This is the per-line hash used by '@' address
+   forms and the 'F' command.  For a single-line range it produces the same
+   value as adler32_lines.  Returns the hash as a 32-bit value packed
+   ((s2<<16)|s1). */
+unsigned long
+adler32_line(const char *s, int len)
+{
+	unsigned long s1 = 1, s2 = 0;
+	int i;
+	for (i = 0; i < len; i++) {
+		s1 = (s1 + (unsigned char)s[i]) % 65521UL;
+		s2 = (s2 + s1) % 65521UL;
+	}
+	s1 = (s1 + (unsigned long)'\n') % 65521UL;
+	s2 = (s2 + s1) % 65521UL;
+	return ((s2 & 0xFFFFUL) << 16) | (s1 & 0xFFFFUL);
+}
 /* translit_text: translate characters in a string */
 char *
 translit_text(char *s, int len, int from, int to)

@@ -55,7 +55,7 @@ run_test_exit "error run exits 1" \
 
 # EMOD: unsaved-buffer quit exits 2 (distinct from ERR which exits 1)
 # Run without -s so 'q' triggers EMOD path.
-printf 'a\nfoo\n.\nq\n' | "$OED" >/dev/null 2>&1
+printf 'a\nfoo\n.\nq\n' | "$HED" >/dev/null 2>&1
 _emod_exit=$?
 if [ "$_emod_exit" = "2" ]; then
     _passes=$((_passes + 1))

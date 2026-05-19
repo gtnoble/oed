@@ -186,4 +186,37 @@ run_test "Z is usable inside a g command body" \
 run_test "Z with address rejects address on empty buffer" \
     "$(printf '1Z\nQ\n')" \
     "?" "-l"
+
+# F command: per-line hash print and always_hash toggle
+run_test "F with explicit dot prints hash of current line" \
+    "$(printf 'a\nfoo\nbar\nbaz\n.\n2p\n.F\nQ\n')" \
+    "$(printf 'bar\n@039d0140')"
+
+run_test "F with explicit address prints hash of that line" \
+    "$(printf 'a\nfoo\nbar\nbaz\n.\n1F\nQ\n')" \
+    "@03d1014f"
+
+run_test "F with range prints one hash per line" \
+    "$(printf 'a\nfoo\nbar\nbaz\n.\n1,3F\nQ\n')" \
+    "$(printf '@03d1014f\n@039d0140\n@03ad0148')"
+
+run_test "F does not change current address" \
+    "$(printf 'a\nfoo\nbar\n.\n1p\n2F\n.p\nQ\n')" \
+    "$(printf 'foo\n@039d0140\nfoo')"
+
+run_test "single-line F produces same value as single-line Z" \
+    "$(printf 'a\nfoo\n.\n1F\n1Z\nQ\n')" \
+    "$(printf '@03d1014f\n03d1014f')"
+
+run_test "bare F toggles always_hash on" \
+    "$(printf 'a\nfoo\nbar\n.\nF\n,p\nQ\n')" \
+    "$(printf '@03d1014f\tfoo\n@039d0140\tbar')"
+
+run_test "bare F toggles always_hash off after being on" \
+    "$(printf 'a\nfoo\n.\nF\nF\n,p\nQ\n')" \
+    "foo"
+
+run_test "F with address on empty buffer gives error" \
+    "$(printf '1F\nQ\n')" \
+    "?" "-l"
 report

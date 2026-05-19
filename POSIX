@@ -45,7 +45,7 @@ EXTENSIONS
 	-E  Use extended regular expressions (ERE) instead of basic (BRE).
 	-P  Use PCRE2 regular expressions.  Mutually exclusive with -E.
 	    Enables lookahead/lookbehind, named captures, \d shorthand,
-	    and other PCRE2-specific syntax.  Only available when oed is
+	    and other PCRE2-specific syntax.  Only available when hed is
 	    built with libpcre2-8.
 	-l  Loose exit status: continue past ERR-level errors in scripts
 	    instead of exiting with status 1.  Combined with -T, all commands
@@ -67,8 +67,13 @@ EXTENSIONS
 	    example, a successful `p' on line 3 prints `OK 3'.  A
 	    pipe-driving agent can detect command boundaries and track dot
 	    on a single stream without a separate `=' round-trip.
-	-M  Machine/agent mode: convenience flag that enables -s, -A, -v, -l, -E,
-	    and -T simultaneously.  Does not imply -n.
+	-H  Always-hash: enable persistent hash prefixing at startup (cf. -n
+	    for line numbering).  All output lines from p, l, and n are
+	    prefixed with the per-line Adler-32 hash and a tab.  When -n and
+	    -H are both active the prefix order is linenum, hash, content.
+	    Equivalent to an immediate `F' (toggle) at startup.
+	-M  Machine/agent mode: convenience flag that enables -s, -A, -v, -l,
+	    -E, -T, and -H simultaneously.  Does not imply -n.
 	-R  Read-only mode: reject any command that modifies the buffer or
 	    writes to a file (a, c, d, e, E, i, j, m, r, s, t, u, w, W, x,
 	    and shell escapes).  Read and search commands continue to work.
@@ -108,6 +113,20 @@ EXTENSIONS
 	   NUL bytes in binary files are hashed as stored.  On an empty buffer
 	   the output is 00000001 without error.  The current address is
 	   unchanged.
+	`@hhhhhhhh' (hash address) addresses the unique line whose per-line
+	   Adler-32 hash equals the given eight lowercase hex digits.  It is
+	   an error if zero or more than one line matches.  All blank lines
+	   share the same hash and are therefore never addressable by @hash
+	   when more than one blank line exists.  Hash addresses are
+	   shift-invariant: insertions and deletions elsewhere do not
+	   invalidate a @hash address.  Conflicts with GNU ed's `#' comment
+	   command were avoided by using `@' as the sigil.
+	`F' without an address toggles persistent hash prefixing (cf. `N').
+	   With an address, prints the per-line Adler-32 hash of each
+	   addressed line as `@xxxxxxxx', one per line.  Default address is
+	   the current line.  The current address is unchanged.  The per-line
+	   hash value is identical to a single-line `Z' and is the value used
+	   by `@hash' addresses.
 6) All `?' error tokens, byte counts from `r'/`w', and the `!' shell-
    escape prompt are written to standard output rather than standard
    error.  This allows scripts and automated tools to read a single

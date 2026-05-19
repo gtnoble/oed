@@ -80,4 +80,41 @@ run_test "= with no address prints addr_last" \
 run_test "bare comma range with = prints 1 and addr_last" \
     "$(printf 'a\none\ntwo\nthree\n.\n,=\nQ\n')" \
     "1 3"
+
+# @hash addressing
+run_test "@hash finds the unique line with matching content" \
+    "$(printf 'a\nfoo\nbar\nbaz\n.\n@039d0140p\nQ\n')" \
+    "bar"
+
+run_test "@hash in range with numeric second address" \
+    "$(printf 'a\nfoo\nbar\nbaz\n.\n@03d1014f,3p\nQ\n')" \
+    "$(printf 'foo\nbar\nbaz')"
+
+run_test "@hash as second address in range" \
+    "$(printf 'a\nfoo\nbar\nbaz\n.\n1,@039d0140p\nQ\n')" \
+    "$(printf 'foo\nbar')"
+
+run_test "@hash with positive offset" \
+    "$(printf 'a\nfoo\nbar\nbaz\n.\n@03d1014f+2p\nQ\n')" \
+    "baz"
+
+run_test "@hash with negative offset" \
+    "$(printf 'a\nfoo\nbar\nbaz\n.\n@03ad0148-1p\nQ\n')" \
+    "bar"
+
+run_test "@hash as destination of m command" \
+    "$(printf 'a\nfoo\nbar\nbaz\n.\n3m@03d1014f\n,p\nQ\n')" \
+    "$(printf 'foo\nbaz\nbar')"
+
+run_test "@hash ambiguous (duplicate content) returns error" \
+    "$(printf 'a\nfoo\nfoo\nbaz\n.\n@03d1014fp\nQ\n')" \
+    "?" "-l"
+
+run_test "@hash no match returns error" \
+    "$(printf 'a\nfoo\nbar\n.\n@deadbeefp\nQ\n')" \
+    "?" "-l"
+
+run_test "@hash invalid hex digit returns error" \
+    "$(printf 'a\nfoo\n.\n@0000000zp\nQ\n')" \
+    "?" "-l"
 report

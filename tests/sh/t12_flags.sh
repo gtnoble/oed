@@ -170,11 +170,11 @@ run_test_file "-M: file not written when error occurred" \
 
 run_test "-M: emits OK after each successful command" \
     "$(printf 'a\nhello\n.\n,p\n')" \
-    "$(printf 'OK 1\nhello\nOK 1')" "-M"
+    "$(printf 'OK 1\n@084b021f\thello\nOK 1')" "-M"
 
 run_test "-M: continues past errors and emits ? for each" \
     "$(printf 'a\nhello\n.\n999p\na\nworld\n.\n,p\n')" \
-    "$(printf 'OK 1\n?\nOK 2\nhello\nworld\nOK 2')" "-M"
+    "$(printf 'OK 1\n?\nOK 2\n@084b021f\thello\n@08d90233\tworld\nOK 2')" "-M"
 
 run_test "-M: shell escape is forbidden" \
     "$(printf '!echo hi\n')" \
@@ -182,15 +182,15 @@ run_test "-M: shell escape is forbidden" \
 
 run_test "-M: does not enable persistent line numbering" \
     "$(printf 'a\nfoo\n.\n,p\n')" \
-    "$(printf 'OK 1\nfoo\nOK 1')" "-M"
+    "$(printf 'OK 1\n@03d1014f\tfoo\nOK 1')" "-M"
 
 run_test "-M: implies ERE so + quantifier works without -E" \
     "$(printf 'a\nfoo\nbr\n.\n/fo+/p\n')" \
-    "$(printf 'OK 2\nfoo\nOK 1')" "-M"
+    "$(printf 'OK 2\n@03d1014f\tfoo\nOK 1')" "-M"
 
 run_test "-M: implies ERE so grouping and alternation work" \
     "$(printf 'a\ncat\ndog\nbird\n.\ng/cat|dog/p\n')" \
-    "$(printf 'OK 3\ncat\ndog\nOK 2')" "-M"
+    "$(printf 'OK 3\n@03a50143\tcat\n@03b90145\tdog\nOK 2')" "-M"
 
 # transaction + global command interaction
 rm -f "$TXFILE"
@@ -253,4 +253,25 @@ run_test "-R: search address is allowed" \
     "$(printf '/beta/p\nQ\n')" \
     "beta" "-R $_RO_FILE"
 
+
+# -H flag: always-hash prefix on printed lines
+run_test "-H flag prefixes all printed lines with @hash" \
+    "$(printf 'a\nfoo\nbar\n.\n,p\nQ\n')" \
+    "$(printf '@03d1014f\tfoo\n@039d0140\tbar')" "-H"
+
+run_test "-H and -n together produce linenum then @hash then content" \
+    "$(printf 'a\nfoo\nbar\n.\n,p\nQ\n')" \
+    "$(printf '1\t@03d1014f\tfoo\n2\t@039d0140\tbar')" "-H -n"
+
+run_test "-H with l command shows hash then listed content" \
+    "$(printf 'a\nfoo\n.\n1l\nQ\n')" \
+    "$(printf '@03d1014f\tfoo$')" "-H"
+
+run_test "-H does not affect = output" \
+    "$(printf 'a\nfoo\n.\n=\nQ\n')" \
+    "1" "-H"
+
+run_test "-H does not affect Z output" \
+    "$(printf 'a\nfoo\n.\nZ\nQ\n')" \
+    "03d1014f" "-H"
 report

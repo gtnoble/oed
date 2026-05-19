@@ -106,6 +106,7 @@ int loose = 0;		/* if set, don't exit on command errors */
 int extended_re = 0;	/* if set, use extended regular expressions */
 int pcre_re = 0;	/* if set, use PCRE2 regular expressions */
 int always_number = 0;	/* if set, always number printed lines */
+int always_hash = 0;	/* if set, always print hash of printed lines */
 int transact = 0;		/* if set, roll back all changes on error */
 int had_error = 0;		/* if set, an error occurred during -lT transaction */
 
@@ -151,7 +152,7 @@ main(volatile int argc, char ** volatile argv)
 	home = getenv("HOME");
 
 top:
-	while ((c = getopt(argc, argv, "p:slvETnAMe:PR")) != -1)
+	while ((c = getopt(argc, argv, "p:slvETnAMHe:PR")) != -1)
 		switch (c) {
 		case 'p':				/* set prompt */
 			dps = prompt = optarg;
@@ -185,16 +186,20 @@ top:
 		case 'n':				/* always number */
 			always_number = 1;
 			break;
+		case 'H':				/* always hash */
+			always_hash = 1;
+			break;
 		case 'A':				/* success token */
 			success_token = 1;
 			break;
-		case 'M':				/* machine/agent mode: -s -A -v -l -T -E */
+		case 'M':				/* machine/agent mode: -s -A -v -l -T -E -H */
 			scripted = 1;
 			success_token = 1;
 			garrulous = 1;
 			loose = 1;
 			transact = 1;
 			extended_re = 1;
+			always_hash = 1;
 			break;
 		case 'R':				/* read-only mode */
 			readonly = 1;
@@ -494,6 +499,54 @@ next_addr(void)
 			if ((addr = get_marked_node_addr((unsigned char)*ibufp++)) < 0)
 				return ERR;
 			break;
+	case '@':
+		/* Hash address: @xxxxxxxx finds the unique line whose
+		   per-line Adler-32 equals the given 8-digit hex value.
+		   Errors if zero or more than one line matches. */
+		MUST_BE_FIRST();
+		{
+			unsigned long h;
+			int hi, linenum, match, found;
+			line_t *hlp;
+			char *hs;
+			int hc;
+			ibufp++;
+			h = 0;
+			for (hi = 0; hi < 8; hi++) {
+				hc = (unsigned char)*ibufp;
+				if (hc >= '0' && hc <= '9')
+					h = (h << 4) | (unsigned long)(hc - '0');
+				else if (hc >= 'a' && hc <= 'f')
+					h = (h << 4) | (unsigned long)(hc - 'a' + 10);
+				else {
+					seterrmsg("invalid hash address");
+					return ERR;
+				}
+				ibufp++;
+			}
+			match = -1;
+			found = 0;
+			hlp = get_addressed_line_node(1);
+			for (linenum = 1; linenum <= addr_last; linenum++,
+			    hlp = hlp->q_forw) {
+				if ((hs = get_sbuf_line(hlp)) == NULL)
+					return ERR;
+				if (adler32_line(hs, hlp->len) == h) {
+					if (found) {
+						seterrmsg("ambiguous hash address");
+						return ERR;
+					}
+					match = linenum;
+					found = 1;
+				}
+			}
+			if (!found) {
+				seterrmsg("no match for hash address");
+				return ERR;
+			}
+			addr = match;
+		}
+		break;
 		case '%':
 		case ',':
 		case ';':
@@ -1182,6 +1235,32 @@ exec_command(void)
 		GET_COMMAND_SUFFIX();
 		always_number = 1 - always_number;
 		break;
+	case 'F':
+		/* With an address range: print the per-line Adler-32 hash of
+		   each addressed line as @xxxxxxxx, one per line; current
+		   address is not changed (cf. '=' command).
+		   Without an address: toggle always_hash flag. */
+		if (addr_cnt > 0) {
+			int fsave, fi;
+			line_t *flp;
+			char *fs;
+			if (check_addr_range(current_addr, current_addr) < 0)
+				return ERR;
+			GET_COMMAND_SUFFIX();
+			fsave = current_addr;
+			flp = get_addressed_line_node(first_addr);
+			for (fi = first_addr; fi <= second_addr;
+			    fi++, flp = flp->q_forw) {
+				if ((fs = get_sbuf_line(flp)) == NULL)
+					return ERR;
+				printf("@%08lx\n", adler32_line(fs, flp->len));
+			}
+			current_addr = fsave;
+		} else {
+			GET_COMMAND_SUFFIX();
+			always_hash = 1 - always_hash;
+		}
+		break;
 	case 'y':
 		if (check_addr_range(current_addr, current_addr) < 0)
 			return ERR;
@@ -1614,6 +1693,7 @@ int
 display_lines(int from, int to, int gflag)
 {
 	if (always_number) gflag |= GNP;
+	if (always_hash)   gflag |= GHP;
 	line_t *bp;
 	line_t *ep;
 	char *s;

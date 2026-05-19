@@ -40,6 +40,7 @@
 .Op Fl P
 .Op Fl T
 .Op Fl n
+.Op Fl H
 .Op Fl A
 .Op Fl M
 .Op Fl R
@@ -212,6 +213,22 @@ Enable persistent line numbering at startup.
 Equivalent to executing the
 .Ic N
 command immediately after startup.
+.It Fl H
+Enable persistent hash prefixing at startup.
+All lines printed by
+.Ic p ,
+.Ic l ,
+and
+.Ic n
+are prefixed with the per-line Adler-32 hash (see
+.Ic F )
+and a tab.
+When combined with
+.Fl n ,
+the prefix order is line-number, hash, content.
+Equivalent to executing the
+.Ic F
+command (toggle) immediately after startup.
 .It Fl A
 After each successful command print
 .Ql OK
@@ -232,10 +249,10 @@ Enables
 .Fl A ,
 .Fl v ,
 .Fl l ,
-and
 .Fl T ,
+.Fl E ,
 and
-.Fl E
+.Fl H
 simultaneously.
 Intended as a convenience flag for agents: suppresses noise, emits per-command
 .Ql OK
@@ -408,6 +425,34 @@ The line previously marked by a
 command, where
 .Ar lc
 is a lower case letter.
+.It Pf @ Ar hhhhhhhh
+The unique line whose per-line Adler-32 hash equals the given eight
+lowercase hexadecimal digits.
+The buffer is scanned in full; it is an error if zero lines match
+(no such hash) or more than one line matches (ambiguous).
+The current address is set to the matched line.
+.Pp
+The hash of a line is the Adler-32 checksum of the line's stored bytes
+followed by a synthetic newline byte.
+Use the
+.Ic F
+command to obtain the hash address of a specific line.
+.Pp
+Because all blank lines share the same hash, any file containing
+more than one blank line has that hash permanently ambiguous;
+blank lines are not addressable by hash.
+.Pp
+Hash addresses are shift-invariant: inserting or deleting lines
+elsewhere in the buffer does not invalidate a
+.Ql @hash
+address, because the target line is located by content rather than
+position.
+Hash addresses and marks
+.Pq Ic k , \&' Ns Ar x
+are complementary: a mark survives edits to the line's content but
+is cleared when the line is deleted; a hash address finds the line
+at its current position after insertions or deletions above it, but
+becomes invalid if the line's content changes.
 .El
 .Ss COMMANDS
 All
@@ -948,6 +993,48 @@ On an empty buffer the output is
 .Pq the Adler-32 of zero bytes ,
 without returning an error.
 The current address is unchanged.
+.It Ic F
+Without an address, toggles the
+.Em always-hash
+flag.
+When active, all lines printed by
+.Ic p ,
+.Ic l ,
+and
+.Ic n
+are prefixed with the per-line hash (see below) and a tab,
+analogous to the
+.Ic N
+command for persistent line numbering.
+The current address is unchanged.
+.Pp
+With an address, prints the per-line Adler-32 hash of each addressed
+line as
+.Ql @xxxxxxxx
+(the
+.Ql @
+sigil followed by eight lowercase hexadecimal digits),
+one per line.
+The default address is the current line.
+The current address is unchanged.
+.Pp
+The per-line hash is the Adler-32 checksum of the line's stored bytes
+followed by a synthetic newline byte, with standard initialisation
+(s1\~=\~1, s2\~=\~0) and modulus 65521.
+For a single-line range the value is identical to that produced by
+.Ic Z .
+This is the value used by the
+.Ql @hash
+address form.
+To compute the hash externally:
+.Bd -literal -offset indent
+python3 -c 'import sys,zlib; \\
+    print(format(zlib.adler32(sys.stdin.buffer.read())&0xffffffff,"08x"))' \\
+    <<< "line content"
+.Ed
+The shell here-string appends one newline, matching the synthetic
+newline separator used internally.
+It is an error if the buffer is empty and an address is given.
 .El
 .Sh ASYNCHRONOUS EVENTS
 .Bl -tag -width "SIGWINCH"

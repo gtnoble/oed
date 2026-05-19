@@ -162,7 +162,7 @@ fi
 if [ ! -x "$(command -v ed)" ] ; then
   prog="ed"
 else
-  prog="oed"
+  prog="hed"
 fi
 
 cflags=""
@@ -446,7 +446,7 @@ TESTBINS =	tests/unit/test_utils
 
 # main.c compiled with its own main() renamed so the test binary can supply one
 tests/unit/test_main.o: main.c
-	\${CC} \${CFLAGS} -Dmain=_oed_real_main -o tests/unit/test_main.o -c main.c
+	\${CC} \${CFLAGS} -Dmain=_hed_real_main -o tests/unit/test_main.o -c main.c
 
 tests/unit/test_utils: tests/unit/test_utils.o tests/unit/test_main.o \${TESTOBJS}
 	\${CC} \${LDFLAGS} -o tests/unit/test_utils tests/unit/test_utils.o tests/unit/test_main.o \${TESTOBJS} \${LIBS}

@@ -198,7 +198,6 @@ top:
 			garrulous = 1;
 			loose = 1;
 			transact = 1;
-			extended_re = 1;
 			always_hash = 1;
 			break;
 		case 'R':				/* read-only mode */

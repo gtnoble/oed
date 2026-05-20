@@ -270,7 +270,7 @@ multiplex descriptors.
 | `-A` | Success token — print `OK <dot>` after every successful command, where `<dot>` is the current line number (e.g. `OK 3`); errors print `?` and do not print `OK` |
 | `-e cmd` | Inline command — execute `cmd` as a command before reading stdin; repeatable; implies `-s` |
 | `-lT` | Combined loose + transaction — attempt all commands, commit writes only if every command succeeded; exit 1 and roll back if any error occurred |
-| `-M` | Machine/agent mode — convenience flag enabling `-s -A -v -l -T -E -H` simultaneously; does not imply `-n`. **Migration note**: existing `-M` scripts that parse printed line content will now see an extra `@xxxxxxxx\t` column before the content on every printed line. Scripts that only consume `OK N` and `?` tokens are unaffected. |
+| `-M` | Machine/agent mode — convenience flag enabling `-s -A -v -l -T -H` simultaneously; does not imply `-n`. **Migration note**: existing `-M` scripts that parse printed line content will now see an extra `@xxxxxxxx\t` column before the content on every printed line. Scripts that only consume `OK N` and `?` tokens are unaffected. |
 | `-R` | Read-only mode — reject any mutating command (`a`, `c`, `d`, `e`, `E`, `i`, `j`, `m`, `r`, `s`, `t`, `u`, `w`, `W`, `x`, `!`); read and search commands continue to work; distinct from GNU ed's `-r` restricted mode |
 
 **Non-standard commands already implemented:**

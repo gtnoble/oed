@@ -73,7 +73,7 @@ EXTENSIONS
 	    -H are both active the prefix order is linenum, hash, content.
 	    Equivalent to an immediate `F' (toggle) at startup.
 	-M  Machine/agent mode: convenience flag that enables -s, -A, -v, -l,
-	    -E, -T, and -H simultaneously.  Does not imply -n.
+	    -T, and -H simultaneously.  Does not imply -n or -E.
 	-R  Read-only mode: reject any command that modifies the buffer or
 	    writes to a file (a, c, d, e, E, i, j, m, r, s, t, u, w, W, x,
 	    and shell escapes).  Read and search commands continue to work.

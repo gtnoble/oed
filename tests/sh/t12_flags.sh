@@ -184,13 +184,14 @@ run_test "-M: does not enable persistent line numbering" \
     "$(printf 'a\nfoo\n.\n,p\n')" \
     "$(printf 'OK 1\n@03d1014f\tfoo\nOK 1')" "-M"
 
-run_test "-M: implies ERE so + quantifier works without -E" \
-    "$(printf 'a\nfoo\nbr\n.\n/fo+/p\n')" \
-    "$(printf 'OK 2\n@03d1014f\tfoo\nOK 1')" "-M"
 
-run_test "-M: implies ERE so grouping and alternation work" \
-    "$(printf 'a\ncat\ndog\nbird\n.\ng/cat|dog/p\n')" \
-    "$(printf 'OK 3\n@03a50143\tcat\n@03b90145\tdog\nOK 2')" "-M"
+run_test "-M: does not enable ERE; BRE + quantifier is literal" \
+    "$(printf 'a\nfoo\nbr\n.\n/fo+/p\n')" \
+    "$(printf 'OK 2\n?')" "-M"
+
+run_test "-ME: -E combined with -M enables ERE" \
+    "$(printf 'a\nfoo\nbr\n.\n/fo+/p\n')" \
+    "$(printf 'OK 2\n@03d1014f\tfoo\nOK 1')" "-M -E"
 
 # transaction + global command interaction
 rm -f "$TXFILE"

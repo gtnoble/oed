@@ -75,6 +75,8 @@ typedef struct {
 #define GNP 010		/* enumerate after command */
 #define GSG 020		/* global substitute */
 #define GHP 040		/* print hash before line */
+#define GDR 0100	/* dry-run substitution (show result, don't apply) */
+#define GAL 0200	/* all-or-nothing: fail unless every line in range matches */
 
 /* Line node */
 typedef struct	line {
@@ -198,9 +200,9 @@ int pop_undo_stack(void);
 undo_t *push_undo_stack(int, int, int);
 char *put_sbuf_line(char *);
 int put_tty_line(char *, int, int, int);
-void quit(int);
+int search_and_replace(ed_pattern_t *, int, int, int, ed_pattern_t *);
 int read_file(char *, int);
-int search_and_replace(ed_pattern_t *, int, int);
+ed_pattern_t *ed_compile_pattern(const char *);
 void ed_pattern_free(ed_pattern_t *);
 int ed_regexec(ed_pattern_t *, const char *, int, ed_match_t *, int);
 void seterrmsg(char *);
@@ -239,6 +241,7 @@ extern int always_hash;
 extern int transact;
 extern int had_error;
 extern int u_current_addr;
+extern int last_nsubs;
 extern int u_addr_last;
 extern int success_token;
 extern int readonly;

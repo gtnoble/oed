@@ -297,3 +297,79 @@ parse_char_class(char *s)
 					return NULL;
 	return  (*s == ']') ? s : NULL;
 }
+
+
+/* ed_compile_pattern: compile a pattern string without touching global state.
+   Returns a newly allocated ed_pattern_t that the caller must free with
+   ed_pattern_free(), or NULL on error. */
+ed_pattern_t *
+ed_compile_pattern(const char *str)
+{
+	char errbuf[128];
+	ed_pattern_t *p;
+
+#ifdef HAVE_PCRE2
+	if (pcre_re) {
+		int errcode;
+		PCRE2_SIZE erroffset;
+		uint32_t capturecount;
+		pcre2_match_data *mdata;
+		pcre2_code *code;
+		PCRE2_UCHAR8 pcre_errbuf[128];
+
+		if ((p = malloc(sizeof(ed_pattern_t))) == NULL) {
+			seterrmsg("out of memory");
+			return NULL;
+		}
+		code = pcre2_compile((PCRE2_SPTR8)str, PCRE2_ZERO_TERMINATED,
+		    0, &errcode, &erroffset, NULL);
+		if (code == NULL) {
+			pcre2_get_error_message(errcode, pcre_errbuf,
+			    sizeof(pcre_errbuf));
+			seterrmsg((char *)pcre_errbuf);
+			free(p);
+			return NULL;
+		}
+		pcre2_pattern_info(code, PCRE2_INFO_CAPTURECOUNT, &capturecount);
+		mdata = pcre2_match_data_create_from_pattern(code, NULL);
+		if (mdata == NULL) {
+			pcre2_code_free(code);
+			seterrmsg("out of memory");
+			free(p);
+			return NULL;
+		}
+		p->is_pcre    = 1;
+		p->nsub       = (int)capturecount;
+		p->posix      = NULL;
+		p->pcre_code  = code;
+		p->pcre_mdata = mdata;
+		return p;
+	}
+#endif
+
+	/* POSIX path */
+	errbuf[0] = '\0';
+	if ((p = malloc(sizeof(ed_pattern_t))) == NULL) {
+		seterrmsg("out of memory");
+		return NULL;
+	}
+	if ((p->posix = malloc(sizeof(regex_t))) == NULL) {
+		seterrmsg("out of memory");
+		free(p);
+		return NULL;
+	}
+	p->is_pcre = 0;
+	{
+		int n;
+		if ((n = regcomp(p->posix, str,
+		    extended_re ? REG_EXTENDED : 0)) != 0) {
+			regerror(n, p->posix, errbuf, sizeof errbuf);
+			seterrmsg(errbuf);
+			free(p->posix);
+			free(p);
+			return NULL;
+		}
+	}
+	p->nsub = (int)p->posix->re_nsub;
+	return p;
+}

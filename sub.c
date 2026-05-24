@@ -122,7 +122,8 @@ static int rbufsz;		/* substitute_matching_text buffer size */
 /* search_and_replace: for each line in a range, change text matching a pattern
    according to a substitution template; return status  */
 int
-search_and_replace(ed_pattern_t *pat, int gflag, int kth)
+search_and_replace(ed_pattern_t *pat, int gflag, int kth, int exact_count,
+    ed_pattern_t *verify_pat)
 {
 	undo_t *up;
 	char *txt;
@@ -132,6 +133,7 @@ search_and_replace(ed_pattern_t *pat, int gflag, int kth)
 	int nsubs = 0;
 	line_t *lp;
 	int len;
+	int range_size = second_addr - first_addr + 1;
 
 	current_addr = first_addr - 1;
 	for (lc = 0; lc <= second_addr - first_addr; lc++) {
@@ -139,40 +141,100 @@ search_and_replace(ed_pattern_t *pat, int gflag, int kth)
 		if ((len = substitute_matching_text(pat, lp, gflag, kth)) < 0)
 			return ERR;
 		else if (len) {
-			up = NULL;
-			if (delete_lines(current_addr, current_addr) < 0)
-				return ERR;
-			txt = rbuf;
-			eot = rbuf + len;
-			SPL1();
-			do {
-				if ((txt = put_sbuf_line(txt)) == NULL) {
-					SPL0();
-					return ERR;
-				} else if (up)
-					up->t = get_addressed_line_node(current_addr);
-				else if ((up = push_undo_stack(UADD,
-				    current_addr, current_addr)) == NULL) {
-					SPL0();
-					return ERR;
+			/* verify result against verify_pat before committing */
+			if (verify_pat != NULL) {
+				char *vline = rbuf;
+				char *vend  = rbuf + len;
+				while (vline != vend) {
+					char *vnl = vline;
+					while (vnl < vend && *vnl != '\n')
+						vnl++;
+					/* temporarily NUL-terminate for regexec */
+					{
+						char save = *vnl;
+						*vnl = '\0';
+						if (ed_regexec(verify_pat, vline,
+						    0, NULL, 0) != 0) {
+							*vnl = save;
+							seterrmsg(
+							    "result did not match verify pattern");
+							if (nsubs > 0 &&
+							    !(gflag & GDR))
+								pop_undo_stack();
+							return ERR;
+						}
+						*vnl = save;
+					}
+					vline = (vnl < vend) ? vnl + 1 : vend;
 				}
-			} while (txt != eot);
-			SPL0();
-			nsubs++;
-			xa = current_addr;
+			}
+			/* dry-run: print result lines, skip buffer write */
+			if (gflag & GDR) {
+				txt = rbuf;
+				eot = rbuf + len;
+				do {
+					char *nl = txt;
+					while (nl < eot && *nl != '\n')
+						nl++;
+					put_tty_line(txt, (int)(nl - txt),
+					    current_addr, gflag);
+					txt = (nl < eot) ? nl + 1 : eot;
+				} while (txt != eot);
+				nsubs++;
+				xa = current_addr;
+			} else {
+				up = NULL;
+				if (delete_lines(current_addr, current_addr) < 0)
+					return ERR;
+				txt = rbuf;
+				eot = rbuf + len;
+				SPL1();
+				do {
+					if ((txt = put_sbuf_line(txt)) == NULL) {
+						SPL0();
+						return ERR;
+					} else if (up)
+						up->t = get_addressed_line_node(
+						    current_addr);
+					else if ((up = push_undo_stack(UADD,
+					    current_addr,
+					    current_addr)) == NULL) {
+						SPL0();
+						return ERR;
+					}
+				} while (txt != eot);
+				SPL0();
+				nsubs++;
+				xa = current_addr;
+			}
 		}
 	}
 	current_addr = xa;
-	if  (nsubs == 0 && !(gflag & GLB)) {
+	if (nsubs == 0 && !(gflag & GLB)) {
 		seterrmsg("no match");
 		return ERR;
 	}
+	/* all-or-nothing: every line in range must have matched */
+	if ((gflag & GAL) && nsubs != range_size) {
+		seterrmsg("not all lines in range matched");
+		if (nsubs > 0 && !(gflag & GDR))
+			pop_undo_stack();
+		return ERR;
+	}
+	/* exact count assertion */
+	if (exact_count >= 0 && nsubs != exact_count) {
+		seterrmsg("substitution count mismatch");
+		if (nsubs > 0 && !(gflag & GDR))
+			pop_undo_stack();
+		return ERR;
+	}
+	last_nsubs = nsubs;
 	if (garrulous)
 		fprintf(stderr, "%d substitution(s)\n", nsubs);
-	if ((gflag & (GPR | GLS | GNP)) &&
+	if (!(gflag & GDR) && (gflag & (GPR | GLS | GNP)) &&
 	    display_lines(current_addr, current_addr, gflag) < 0)
 		return ERR;
-	return 0;
+	return nsubs;
 }
 
 

@@ -130,6 +130,7 @@ static char *e_cmds[256];	/* inline command strings from -e */
 static int n_ecmds = 0;		/* number of -e commands */
 int success_token = 0;		/* if set, print OK after each successful command */
 int readonly = 0;		/* if set, reject all mutating commands */
+int last_nsubs = -1;		/* nsubs from last search_and_replace; -1 if n/a */
 
 void
 seterrmsg(char *s)
@@ -339,7 +340,14 @@ top:
 			    (status = display_lines(current_addr, current_addr,
 				status)) >= 0)) {
 			if (success_token)
-				printf("OK %d\n", current_addr);
+			if (success_token) {
+				if (last_nsubs >= 0)
+					printf("OK %d %dsubs\n",
+					    current_addr, last_nsubs);
+				else
+					printf("OK %d\n", current_addr);
+				last_nsubs = -1;
+			}
 			continue;
 		}
 		switch (status) {
@@ -778,6 +786,8 @@ free_write_queue(void)
 int
 exec_command(void)
 {
+	static int sgcount = -1;
+	static ed_pattern_t *verify_pat = NULL;
 	extern int u_current_addr;
 	extern int u_addr_last;
 
@@ -1021,13 +1031,17 @@ exec_command(void)
 			return ERR;
 		}
 		GET_COMMAND_SUFFIX();
-		if (!isglobal && !transact) clear_undo_stack();
 		if ((addr = read_file(fnp, second_addr)) < 0)
 			return ERR;
 		else if (addr)
 			modified = 1;
 		break;
 	case 's':
+		sgcount = -1;
+		if (verify_pat != NULL) {
+			ed_pattern_free(verify_pat);
+			verify_pat = NULL;
+		}
 		do {
 			switch (*ibufp) {
 			case '\n':
@@ -1107,15 +1121,57 @@ exec_command(void)
 				sgflag |= GNP;
 				ibufp++;
 				break;
+			case 'D':
+				sgflag |= GDR;
+				ibufp++;
+				break;
+			case '!':
+				sgflag |= GAL;
+				ibufp++;
+				break;
+			case '=':
+				ibufp++;
+				STRTOI(sgcount, ibufp);
+				break;
 			default:
 				n++;
 			}
 		} while (!n);
+		/* parse optional ~verify_pattern~ suffix */
+		if (verify_pat != NULL) {
+			ed_pattern_free(verify_pat);
+			verify_pat = NULL;
+		}
+		if (*ibufp == '~') {
+			char *vstart;
+			char *vend;
+			char *vstr;
+			int vlen;
+			ibufp++;		/* skip opening '~' */
+			vstart = ibufp;
+			while (*ibufp != '~' && *ibufp != '\n')
+				ibufp++;
+			vend = ibufp;
+			if (*ibufp == '~')
+				ibufp++;	/* skip closing '~' */
+			vlen = (int)(vend - vstart);
+			if ((vstr = malloc((size_t)(vlen + 1))) == NULL) {
+				seterrmsg("out of memory");
+				return ERR;
+			}
+			memcpy(vstr, vstart, (size_t)vlen);
+			vstr[vlen] = '\0';
+			verify_pat = ed_compile_pattern(vstr);
+			free(vstr);
+			if (verify_pat == NULL)
+				return ERR;
+		}
 		if (check_addr_range(current_addr, current_addr) < 0)
 			return ERR;
 		GET_COMMAND_SUFFIX();
 		if (!isglobal && !transact) clear_undo_stack();
-		if (search_and_replace(pat, sgflag, sgnum) < 0)
+		if (search_and_replace(pat, sgflag, sgnum, sgcount,
+		    verify_pat) < 0)
 			return ERR;
 		break;
 	case 't':

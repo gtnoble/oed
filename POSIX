@@ -180,3 +180,29 @@ DEVIATIONS
    remainder of the argument is interpreted as a shell command.  To invoke
    ed on a file whose name starts with bang, prefix the name with a
    backslash.
+
+5) The `s' (substitute) command accepts the following non-POSIX suffixes:
+
+   `D'     Dry-run mode: prints would-be substituted text for each
+           matching line without modifying the buffer.  No change is
+           committed and `modified' is not set.
+
+   `=N'    Exact-count assertion: fails (with `?') if the number of
+           lines changed is not exactly N.  Any partial changes that
+           were applied before the check are rolled back via the undo
+           stack.
+
+   `!'     All-or-nothing: fails if any line in the addressed range
+           does not match the pattern.  Partial changes rolled back.
+
+   `~re~'  Result-verification: after computing each substitution
+           result, tests the result against the regular expression re
+           (delimited by `~').  On mismatch, rolls back and fails.
+
+   These flags may be combined and may appear after `g', `p', `l',
+   `n', or a numeric occurrence count.
+
+6) When `-A' (success-token) mode is active, the `OK dot' token printed
+   after a successful `s' command is extended to `OK dot Nsubs', where N
+   is the count of lines changed by the substitution.  Non-substitution
+   commands still print `OK dot'.

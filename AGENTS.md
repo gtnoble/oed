@@ -124,7 +124,7 @@ functional area:
 | `t01_insert_print.sh` | `a`, `i`, `c`, `p`, `l`, `n` commands |
 | `t02_addresses.sh` | All address forms: `n`, `.`, `$`, `±n`, `/re/`, `?re?`, `,`, `;`, `'x`; `=` range form |
 | `t03_delete_move_copy.sh` | `d`, `m`, `t` (copy), `j` commands |
-| `t04_substitution.sh` | `s` command and all flags (`g`, nth, `p`, `&`, `\1`) |
+| `t04_substitution.sh` | `s` command and all flags (`g`, nth, `p`, `&`, `\1`); repeat substitution |
 | `t05_global.sh` | `g`, `v` commands, multi-command global body |
 | `t06_file_io.sh` | `e`, `r`, `w`, `W` commands |
 | `t07_undo.sh` | `u` command, single and double undo |
@@ -136,6 +136,7 @@ functional area:
 | `t13_shell_escape.sh` | `!cmd` shell escape |
 | `t14_pcre.sh` | Comprehensive PCRE2 (`-P`) tests: errors, pattern reuse, syntax features (lookahead/behind, `\w`/`\s`/`\b`/`\d`, non-greedy, named/non-capturing groups, possessive), substitution edge cases (zero-length, nth, `&`), command interactions (`g`, `v`, `?re?`), flag combinations |
 | `t15_bre_ere.sh` | Comprehensive BRE (default) and ERE (`-E`) tests: errors, pattern reuse, BRE-specific syntax (`\{n,m\}`, `\(\)` backreferences in pattern and substitution), ERE-specific syntax (`+`, `?`, `{n,m}`, `\|`, `()`), POSIX bracket expressions (`[:alpha:]`, `[:digit:]`, `[:alnum:]`, `[:space:]`, `[:upper:]`, `[:lower:]`, `[:punct:]`, negated/range/edge-case classes), substitution edge cases (zero-length, nth, `&`, multi-capture), command interactions (`g`, `v`, `?re?`), flag combinations (`-n`, `-l`, `-e`, `-lT`) |
+| `t16_sub_assertions.sh` | `s` command agent-safety extensions: `=N` exact-count assertion, `D` dry-run, `!` all-or-nothing, `~re~` result-verify; rollback on assertion failure; `OK Nsubs` token format |
 
 **Tier 2 — C89 unit tests** (`tests/unit/`)  
 `test_utils.c` tests pure utility functions (`has_trailing_escape`,
@@ -267,7 +268,7 @@ multiplex descriptors.
 | `-P` | Use PCRE2 regular expressions; mutually exclusive with `-E`; requires build with libpcre2-8 |
 | `-n` | Always-number — prefix every output line with its line number; equivalent to running `N` at startup |
 | `-H` | Always-hash — prefix every output line with its per-line Adler-32 hash and a tab (`@xxxxxxxx\t`); equivalent to running `F` (toggle) at startup. When combined with `-n`, column order is `linenum\t@hash\tcontent`. Implied by `-M`. |
-| `-A` | Success token — print `OK <dot>` after every successful command, where `<dot>` is the current line number (e.g. `OK 3`); errors print `?` and do not print `OK` |
+| `-A` | Success token — print `OK <dot>` after every successful command, where `<dot>` is the current line number (e.g. `OK 3`); errors print `?` and do not print `OK`. For `s` commands, extended to `OK <dot> <N>subs` (e.g. `OK 3 2subs`) where N is the number of lines changed. |
 | `-e cmd` | Inline command — execute `cmd` as a command before reading stdin; repeatable; implies `-s` |
 | `-lT` | Combined loose + transaction — attempt all commands, commit writes only if every command succeeded; exit 1 and roll back if any error occurred |
 | `-M` | Machine/agent mode — convenience flag enabling `-s -A -v -l -T -H` simultaneously; does not imply `-n`. **Migration note**: existing `-M` scripts that parse printed line content will now see an extra `@xxxxxxxx\t` column before the content on every printed line. Scripts that only consume `OK N` and `?` tokens are unaffected. |
@@ -288,6 +289,20 @@ multiplex descriptors.
 | `F` | `F` or `(.,.)F` | Without address: toggle `always_hash` — prefix every subsequent printed line with `@xxxxxxxx\t` (per-line Adler-32 hash and tab). With address: print the hash of each addressed line as `@xxxxxxxx`, one per line; current address unchanged. Default address is `.`. Single-line `F` and single-line `Z` produce the same numeric value; `F` adds the `@` sigil. |
 | `@xxxxxxxx` | address form | Hash address — resolves to the unique line whose per-line Adler-32 equals the 8 hex digits. Error if zero or more than one line matches. Shift-invariant: insertions/deletions elsewhere do not invalidate the address. All blank lines share hash `00020002`; files with more than one blank line cannot use `@00020002`. Use `(.)F` to obtain the hash address of a line. Verify uniqueness before scripting: `C/^exact content$/` must return `1`. |
 
+
+
+**Non-standard `s`-command suffixes (agent-safety extensions):**
+
+| Suffix | Effect |
+|---|---|
+| `=N` | Exact-count assertion — fail (`?`) and roll back if the number of lines changed ≠ N. Most useful as `=1` to assert exactly one line was affected. |
+| `!` | All-or-nothing — fail and roll back if any line in the addressed range does not match the pattern. |
+| `D` | Dry-run — print each would-be substituted line without modifying the buffer; useful for verifying the regex before committing. |
+| `~re~` | Result-verify — after each substituted line is computed, test it against `re` (delimited by `~`); roll back and fail if any result does not match. |
+
+Suffixes compose: `1,$s/foo/bar/=1` (exactly one change), `1,3s/old/new/!` (all three must match), `s/x/y/D` (preview), `s/x/y/~^y~` (verify result starts with `y`).
+
+When `-A` is active, a successful `s` command prints `OK <dot> <N>subs` (e.g. `OK 3 2subs`) rather than plain `OK <dot>`.
 
 ### Features not yet implemented
 

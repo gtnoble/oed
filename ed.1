@@ -706,6 +706,44 @@ It is an error if no substitutions are performed on any of the addressed
 lines.
 The current address is set to the last line affected.
 .Pp
+The following additional suffixes extend the substitution command:
+.Bl -tag -width "Ic =Ar N"
+.It Ic D
+Dry-run mode.
+Prints the would-be substituted text for each matching line without
+modifying the buffer.
+Useful for verifying a substitution before committing it.
+.It Ic = Ns Ar N
+Exact-count assertion.
+Fails if the number of lines actually changed is not exactly
+.Ar N .
+Any partial changes are rolled back on failure.
+.It Ic \&!
+All-or-nothing assertion.
+Fails if any line in the addressed range does not match the pattern.
+Any partial changes are rolled back on failure.
+.It Ic ~ Ns Ar re Ns Ic ~
+Result-verification pattern.
+After computing each substitution result, tests the result against
+.Ar re
+(delimited by
+.Sq ~ ) .
+If any result line does not match, the entire substitution is rolled back.
+.El
+.Pp
+When
+.Fl A
+(always-token) mode is active, a successful
+.Ic s
+command prints
+.Sm off
+.Ic OK Ar \ dot Ar \ N Ns Ic subs
+.Sm on
+where
+.Ar N
+is the count of lines changed, e.g.
+.Ic "OK 3 2subs" .
+.Pp
 .Ar re
 and
 .Ar replacement

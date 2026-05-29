@@ -173,15 +173,14 @@ void
 unset_active_nodes(line_t *np, line_t *mp)
 {
 	line_t *lp;
-	int i;
 
 	for (lp = np; lp != mp; lp = lp->q_forw)
-		for (i = 0; i < active_last; i++)
+		for (int i = 0; i < active_last; i++)
 			if (active_list[active_ndx] == lp) {
 				active_list[active_ndx] = NULL;
-				active_ndx = INC_MOD(active_ndx, active_last - 1);
+				active_ndx = inc_mod(active_ndx, active_last - 1);
 				break;
-			} else	active_ndx = INC_MOD(active_ndx, active_last - 1);
+			} else	active_ndx = inc_mod(active_ndx, active_last - 1);
 }
 
 

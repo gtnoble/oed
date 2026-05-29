@@ -37,7 +37,6 @@
 #include <string.h>
 
 #include "ed.h"
-extern int garrulous;
 
 static char *extract_subst_template(void);
 static int substitute_matching_text(ed_pattern_t *, line_t *, int, int);

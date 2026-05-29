@@ -31,8 +31,11 @@
  */
 
 #include "config.h"
+#include <inttypes.h>
 #include <limits.h>
 #include <regex.h>
+#include <stdbool.h>
+#include <stdint.h>
 #ifdef HAVE_PCRE2
 # define PCRE2_CODE_UNIT_WIDTH 8
 # include <pcre2.h>
@@ -58,8 +61,8 @@ typedef struct {
 
 /* Compiled pattern wrapper: holds either a POSIX regex_t or a PCRE2 pattern */
 typedef struct {
-	int is_pcre;		/* if set, use PCRE2 fields below */
-	int nsub;		/* number of capturing subexpressions */
+	bool is_pcre;		/* if set, use PCRE2 fields below */
+	int  nsub;		/* number of capturing subexpressions */
 	regex_t *posix;		/* POSIX compiled pattern (non-PCRE path) */
 #ifdef HAVE_PCRE2
 	pcre2_code       *pcre_code;
@@ -107,8 +110,9 @@ typedef struct undo {
 # define min(a,b) ((a) < (b) ? (a) : (b))
 #endif
 
-#define INC_MOD(l, k)	((l) + 1 > (k) ? 0 : (l) + 1)
-#define DEC_MOD(l, k)	((l) - 1 < 0 ? (k) : (l) - 1)
+/* inc_mod/dec_mod: modular increment/decrement within [0, k] */
+static inline int inc_mod(int l, int k) { return l + 1 > k ? 0 : l + 1; }
+static inline int dec_mod(int l, int k) { return l - 1 < 0 ? k : l - 1; }
 
 /* SPL1: disable some interrupts (requires reliable signals) */
 #define SPL1() mutex++
@@ -152,18 +156,25 @@ if ((i) > (n)) { \
 	SPL0(); \
 }
 
-/* REQUE: link pred before succ */
-#define REQUE(pred, succ) (pred)->q_forw = (succ), (succ)->q_back = (pred)
-
-/* INSQUE: insert elem in circular queue after pred */
-#define INSQUE(elem, pred) \
-{ \
-	REQUE((elem), (pred)->q_forw); \
-	REQUE((pred), elem); \
+/* reque: link pred immediately before succ in the circular queue */
+static inline void reque(line_t *pred, line_t *succ)
+{
+	pred->q_forw = succ;
+	succ->q_back = pred;
 }
 
-/* remque: remove_lines elem from circular queue */
-#define REMQUE(elem) REQUE((elem)->q_back, (elem)->q_forw);
+/* insque: insert elem in circular queue after pred */
+static inline void insque(line_t *elem, line_t *pred)
+{
+	reque(elem, pred->q_forw);
+	reque(pred, elem);
+}
+
+/* remque: remove elem from circular queue */
+static inline void remque(line_t *elem)
+{
+	reque(elem->q_back, elem->q_forw);
+}
 
 /* NUL_TO_NEWLINE: overwrite ASCII NULs with newlines */
 #define NUL_TO_NEWLINE(s, l) translit_text(s, l, '\0', '\n')
@@ -172,6 +183,7 @@ if ((i) > (n)) { \
 #define NEWLINE_TO_NUL(s, l) translit_text(s, l, '\n', '\0')
 
 /* Local Function Declarations */
+void quit(int);
 void add_line_node(line_t *);
 int build_active_list(int);
 int get_active_count(void);
@@ -211,7 +223,7 @@ char *translit_text(char *, int, int, int);
 void unmark_line_node(line_t *);
 void unset_active_nodes(line_t *, line_t *);
 int write_file(char *, char *, int, int);
-unsigned long adler32_line(const char *, int);
+uint32_t adler32_line(const char *, int);
 
 /* global buffers */
 extern char *ibuf;
@@ -219,9 +231,9 @@ extern char *ibufp;
 extern int ibufsz;
 
 /* global flags */
-extern int isbinary;
-extern int isglobal;
-extern int modified;
+extern bool isbinary;
+extern bool isglobal;
+extern bool modified;
 
 extern volatile sig_atomic_t mutex;
 extern volatile sig_atomic_t sighup;
@@ -233,16 +245,22 @@ extern int current_addr;
 extern int first_addr;
 extern int lineno;
 extern int second_addr;
-extern int loose;
-extern int extended_re;
-extern int pcre_re;
-extern int always_number;
-extern int always_hash;
-extern int transact;
-extern int had_error;
+extern bool loose;
+extern bool extended_re;
+extern bool pcre_re;
+extern bool always_number;
+extern bool always_hash;
+extern bool transact;
+extern bool had_error;
 extern int u_current_addr;
 extern int last_nsubs;
 extern int u_addr_last;
-extern int success_token;
-extern int readonly;
-extern int utf8_locale;
+extern bool success_token;
+extern bool readonly;
+extern bool utf8_locale;
+/* Additional globals not declared above (formerly via local extern) */
+extern bool garrulous;
+extern bool scripted;
+extern bool patlock;
+extern volatile sig_atomic_t rows;
+extern volatile sig_atomic_t cols;

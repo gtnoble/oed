@@ -45,7 +45,7 @@
 
 static FILE *sfp;			/* scratch file pointer */
 static off_t sfseek;			/* scratch file position */
-static int seek_write;			/* seek before writing */
+static bool seek_write;			/* seek before writing */
 static line_t buffer_head;		/* incore buffer */
 
 /* get_sbuf_line: get a line of text from the scratch file; return pointer
@@ -140,7 +140,7 @@ add_line_node(line_t *lp)
 
 	/* this get_addressed_line_node last! */
 	cp = get_addressed_line_node(current_addr);
-	INSQUE(lp, cp);
+	insque(lp, cp);
 	addr_last++;
 	current_addr++;
 }
@@ -195,7 +195,7 @@ get_addressed_line_node(int n)
 }
 
 
-extern int newline_added;
+extern bool newline_added;
 
 #ifdef __TERMUX__
 #define SCRATCH_TEMPLATE      "/data/data/com.termux/files/usr/tmp/ed.XXXXXXXXXX"
@@ -210,7 +210,7 @@ open_sbuf(void)
 {
 	int fd = -1;
 
-	isbinary = newline_added = 0;
+	isbinary = false; newline_added = false;
 	strlcpy(sfn, SCRATCH_TEMPLATE, sizeof sfn);
 	if ((fd = mkstemp(sfn)) == -1 ||
 	    (sfp = fdopen(fd, "w+")) == NULL) {
@@ -260,7 +260,6 @@ static unsigned char ctab[256];		/* character translation table */
 void
 init_buffers(void)
 {
-	int i = 0;
 
 	/* Read stdin one character at a time to avoid i/o contention
 	   with shell escapes invoked by nonterminal input, e.g.,
@@ -271,8 +270,8 @@ init_buffers(void)
 	setvbuf(stdin, NULL, _IONBF, 0);
 	if (open_sbuf() < 0)
 		quit(2);
-	REQUE(&buffer_head, &buffer_head);
-	for (i = 0; i < 256; i++)
+	reque(&buffer_head, &buffer_head);
+	for (int i = 0; i < 256; i++)
 		ctab[i] = i;
 }
 
@@ -284,16 +283,15 @@ init_buffers(void)
    forms and the 'F' command.  For a single-line range it produces the same
    value as adler32_lines.  Returns the hash as a 32-bit value packed
    ((s2<<16)|s1). */
-unsigned long
+uint32_t
 adler32_line(const char *s, int len)
 {
-	unsigned long s1 = 1, s2 = 0;
-	int i;
-	for (i = 0; i < len; i++) {
+	uint32_t s1 = 1, s2 = 0;
+	for (int i = 0; i < len; i++) {
 		s1 = (s1 + (unsigned char)s[i]) % 65521UL;
 		s2 = (s2 + s1) % 65521UL;
 	}
-	s1 = (s1 + (unsigned long)'\n') % 65521UL;
+	s1 = (s1 + '\n') % 65521UL;
 	s2 = (s2 + s1) % 65521UL;
 	return ((s2 & 0xFFFFUL) << 16) | (s1 & 0xFFFFUL);
 }

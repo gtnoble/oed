@@ -252,7 +252,7 @@ do
 	printf "  --cc=CC                 "
 	echo "Use specified C compiler [default=cc]"
 	printf "  --cflags=CFLAGS         "
-	echo "Use specified CFLAGS [default=\"-g -O2 -pipe -w\"]"
+	echo "Use specified CFLAGS [default=\"-g -O2 -pipe -Wall -Wpedantic -Werror\"]"
 	printf "  --ldflags=LDFLAGS       "
 	echo "Use specified LDFLAGS"
 	printf "  --program-name=NAME     "
@@ -300,7 +300,7 @@ else
 fi
 
 if [ "x$flags" = "x" ] ; then
-  flags="-g -O2 -pipe -w -I$(pwd)"
+  flags="-g -O2 -pipe -Wall -Wpedantic -Werror -I$(pwd)"
 else
   flags="$flags -I$(pwd)"
 fi

@@ -66,11 +66,8 @@ push_undo_stack(int type, int from, int to)
 }
 
 
-/* USWAP: swap undo nodes */
-#define USWAP(x,y) { \
-	undo_t utmp; \
-	utmp = x, x = y, y = utmp; \
-}
+/* uswap: swap two undo nodes */
+static inline void uswap(undo_t *x, undo_t *y) { undo_t t = *x; *x = *y; *y = t; }
 
 
 int u_current_addr = -1;	/* if >= 0, undo enabled */
@@ -94,17 +91,17 @@ pop_undo_stack(void)
 	for (n = u_p; n-- > 0;) {
 		switch(ustack[n].type) {
 		case UADD:
-			REQUE(ustack[n].h->q_back, ustack[n].t->q_forw);
+			reque(ustack[n].h->q_back, ustack[n].t->q_forw);
 			break;
 		case UDEL:
-			REQUE(ustack[n].h->q_back, ustack[n].h);
-			REQUE(ustack[n].t, ustack[n].t->q_forw);
+			reque(ustack[n].h->q_back, ustack[n].h);
+			reque(ustack[n].t, ustack[n].t->q_forw);
 			break;
 		case UMOV:
 		case VMOV:
-			REQUE(ustack[n - 1].h, ustack[n].h->q_forw);
-			REQUE(ustack[n].t->q_back, ustack[n - 1].t);
-			REQUE(ustack[n].h, ustack[n].t);
+			reque(ustack[n - 1].h, ustack[n].h->q_forw);
+			reque(ustack[n].t->q_back, ustack[n - 1].t);
+			reque(ustack[n].h, ustack[n].t);
 			n--;
 			break;
 		default:
@@ -115,7 +112,7 @@ pop_undo_stack(void)
 	}
 	/* reverse undo stack order */
 	for (n = u_p; n-- > (u_p + 1)/ 2;)
-		USWAP(ustack[n], ustack[u_p - 1 - n]);
+		uswap(&ustack[n], &ustack[u_p - 1 - n]);
 	if (isglobal)
 		clear_active_list();
 	current_addr = u_current_addr, u_current_addr = o_current_addr;

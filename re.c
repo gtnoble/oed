@@ -42,9 +42,6 @@
 static char *extract_pattern(int);
 static char *parse_char_class(char *);
 
-extern int patlock;
-extern int extended_re;
-extern int pcre_re;
 
 
 /* ed_pattern_free: free an ed_pattern_t and all resources it owns */
@@ -116,7 +113,7 @@ ed_regexec(ed_pattern_t *pat, const char *txt, int nmatch, ed_match_t *rm,
 	{
 		regmatch_t posix_rm[SE_MAX];
 		int posix_flags = 0;
-		int rc, i;
+		int rc;
 
 		if (flags & ED_REG_STARTEND)
 			posix_flags |= REG_STARTEND;
@@ -132,7 +129,7 @@ ed_regexec(ed_pattern_t *pat, const char *txt, int nmatch, ed_match_t *rm,
 			    posix_flags);
 			if (rc != 0)
 				return 1;
-			for (i = 0; i < nmatch; i++) {
+			for (int i = 0; i < nmatch; i++) {
 				rm[i].rm_so = (int)posix_rm[i].rm_so;
 				rm[i].rm_eo = (int)posix_rm[i].rm_eo;
 			}

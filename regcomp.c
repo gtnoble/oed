@@ -1285,6 +1285,8 @@ stripsnug(struct parse *p, struct re_guts *g)
  *
  * Note that must and mlen got initialized during setup.
  */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
 static void
 findmust(struct parse *p, struct re_guts *g)
 {
@@ -1359,6 +1361,7 @@ findmust(struct parse *p, struct re_guts *g)
 	assert(cp == g->must + g->mlen);
 	*cp = '\0';		/* just on general principles */
 }
+#pragma GCC diagnostic pop
 
 /*
  - pluscount - count + nesting

@@ -307,7 +307,10 @@ dissect(struct match *m, const char *start, const char *stop, sopno startst,
 	const char *ssp;	/* start of string matched by subsubRE */
 	const char *sep;	/* end of string matched by subsubRE */
 	const char *oldssp;	/* previous ssp */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 	const char *dp;
+#pragma GCC diagnostic pop
 
 	AT("diss", start, stop, startst, stopst);
 	sp = start;

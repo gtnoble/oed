@@ -84,7 +84,7 @@ static int get_marked_node_addr(int);
 static line_t *dup_line_node(line_t *);
 static int enqueue_write(int, int, const char *, int);
 static int flush_write_queue(void);
-static int adler32_lines(int, int, unsigned long *);
+static int adler32_lines(int, int, uint32_t *);
 static void free_write_queue(void);
 
 sigjmp_buf env;
@@ -102,20 +102,20 @@ int ibufsz;			/* ed command-line buffer size */
 char *ibufp;			/* pointer to ed command-line buffer */
 
 /* global flags */
-int garrulous = 0;		/* if set, print all error messages */
-int isbinary;			/* if set, buffer contains ASCII NULs */
-int isglobal;			/* if set, doing a global command */
-int modified;			/* if set, buffer modified since last write */
-int scripted = 0;		/* if set, suppress diagnostics */
-int interactive = 0;		/* if set, we are in interactive mode */
-int loose = 0;		/* if set, don't exit on command errors */
-int extended_re = 0;	/* if set, use extended regular expressions */
-int pcre_re = 0;	/* if set, use PCRE2 regular expressions */
-int utf8_locale = 0;	/* if set, locale is UTF-8 */
-int always_number = 0;	/* if set, always number printed lines */
-int always_hash = 0;	/* if set, always print hash of printed lines */
-int transact = 0;		/* if set, roll back all changes on error */
-int had_error = 0;		/* if set, an error occurred during -lT transaction */
+bool garrulous = false;		/* if set, print all error messages */
+bool isbinary;			/* if set, buffer contains ASCII NULs */
+bool isglobal;			/* if set, doing a global command */
+bool modified;			/* if set, buffer modified since last write */
+bool scripted = false;		/* if set, suppress diagnostics */
+bool interactive = false;		/* if set, we are in interactive mode */
+bool loose = false;		/* if set, don't exit on command errors */
+bool extended_re = false;	/* if set, use extended regular expressions */
+bool pcre_re = false;	/* if set, use PCRE2 regular expressions */
+bool utf8_locale = false;	/* if set, locale is UTF-8 */
+bool always_number = false;	/* if set, always number printed lines */
+bool always_hash = false;	/* if set, always print hash of printed lines */
+bool transact = false;		/* if set, roll back all changes on error */
+bool had_error = false;		/* if set, an error occurred during -lT transaction */
 
 volatile sig_atomic_t mutex = 0;  /* if set, signals set flags */
 volatile sig_atomic_t sighup = 0; /* if set, sighup received while mutex set */
@@ -135,8 +135,8 @@ static char *home;		/* home directory */
 
 static char *e_cmds[256];	/* inline command strings from -e */
 static int n_ecmds = 0;		/* number of -e commands */
-int success_token = 0;		/* if set, print OK after each successful command */
-int readonly = 0;		/* if set, reject all mutating commands */
+bool success_token = false;		/* if set, print OK after each successful command */
+bool readonly = false;		/* if set, reject all mutating commands */
 int last_nsubs = -1;		/* nsubs from last search_and_replace; -1 if n/a */
 
 void
@@ -241,14 +241,13 @@ top:
 	}
 	if (n_ecmds > 0) {
 		int pfd[2];
-		int ei;
 		if (pipe(pfd) < 0) {
 			perror(NULL);
 			exit(1);
 		}
-		for (ei = 0; ei < n_ecmds; ei++) {
-			write(pfd[1], e_cmds[ei], strlen(e_cmds[ei]));
-			write(pfd[1], "\n", 1);
+		for (int ei = 0; ei < n_ecmds; ei++) {
+			if (write(pfd[1], e_cmds[ei], strlen(e_cmds[ei])) < 0) { perror(NULL); exit(1); }
+			if (write(pfd[1], "\n", 1) < 0) { perror(NULL); exit(1); }
 		}
 		close(pfd[1]);
 		if (dup2(pfd[0], STDIN_FILENO) < 0) {
@@ -538,9 +537,9 @@ next_addr(void)
 			for (hi = 0; hi < 8; hi++) {
 				hc = (unsigned char)*ibufp;
 				if (hc >= '0' && hc <= '9')
-					h = (h << 4) | (unsigned long)(hc - '0');
+					h = (h << 4) | (uint32_t)(hc - '0');
 				else if (hc >= 'a' && hc <= 'f')
-					h = (h << 4) | (unsigned long)(hc - 'a' + 10);
+					h = (h << 4) | (uint32_t)(hc - 'a' + 10);
 				else {
 					seterrmsg("invalid hash address");
 					return ERR;
@@ -651,7 +650,7 @@ next_addr(void)
 #define SGR 004		/* use last regex instead of last pat */
 #define SGF 010		/* repeat last substitution */
 
-int patlock = 0;	/* if set, pattern not freed by get_compiled_pattern() */
+bool patlock = false;	/* if set, pattern not freed by get_compiled_pattern() */
 
 volatile sig_atomic_t rows = 22;	/* scroll length: ws_row - 2 */
 volatile sig_atomic_t cols = 72;	/* wrap column */
@@ -672,7 +671,6 @@ yank_lines(int from, int to, int reg)
 {
 	line_t *lp;
 	int n = to - from + 1;
-	int i;
 
 	if (n > cbufsz[reg]) {
 		line_t *tmp = realloc(cbuf[reg], n * sizeof(line_t));
@@ -685,7 +683,7 @@ yank_lines(int from, int to, int reg)
 		cbufsz[reg] = n;
 	}
 	lp = get_addressed_line_node(from);
-	for (i = 0; i < n; i++, lp = lp->q_forw) {
+	for (int i = 0; i < n; i++, lp = lp->q_forw) {
 		cbuf[reg][i].seek = lp->seek;
 		cbuf[reg][i].len  = lp->len;
 	}
@@ -699,14 +697,13 @@ static int
 put_lines(int addr, int reg)
 {
 	undo_t *up = NULL;
-	int i;
 
 	if (cbuflen[reg] == 0) {
 		seterrmsg("nothing to put");
 		return ERR;
 	}
 	current_addr = addr;
-	for (i = 0; i < cbuflen[reg]; i++) {
+	for (int i = 0; i < cbuflen[reg]; i++) {
 		line_t *lp = dup_line_node(&cbuf[reg][i]);
 		if (lp == NULL)
 			return ERR;
@@ -772,9 +769,9 @@ enqueue_write(int first, int second, const char *fn, int append)
 static int
 flush_write_queue(void)
 {
-	int i, addr;
+	int addr;
 
-	for (i = 0; i < n_write_ops; i++) {
+	for (int i = 0; i < n_write_ops; i++) {
 		if ((addr = write_file(write_queue[i].filename,
 		    write_queue[i].append ? "a" : "w",
 		    write_queue[i].first, write_queue[i].second)) < 0) {
@@ -868,7 +865,7 @@ exec_command(void)
 		if (!isglobal && !transact) clear_undo_stack();
 		if (delete_lines(first_addr, second_addr) < 0)
 			return ERR;
-		else if ((addr = INC_MOD(current_addr, addr_last)) != 0)
+		else if ((addr = inc_mod(current_addr, addr_last)) != 0)
 			current_addr = addr;
 		break;
 	case 'e':
@@ -931,7 +928,7 @@ exec_command(void)
 			return ERR;
 		else if ((n = (c == 'G' || c == 'V')))
 			GET_COMMAND_SUFFIX();
-		isglobal++;
+		isglobal = true;
 		if (exec_global(n, gflag) < 0)
 			return ERR;
 		break;
@@ -949,7 +946,7 @@ exec_command(void)
 			return ERR;
 		}
 		GET_COMMAND_SUFFIX();
-		if ((garrulous = 1 - garrulous) && *errmsg)
+		if ((garrulous = !garrulous) && *errmsg)
 			fprintf(stderr, "%s\n", errmsg);
 		break;
 	case 'i':
@@ -1279,7 +1276,7 @@ exec_command(void)
 		GET_COMMAND_SUFFIX();
 		if (sflags) printf("%s\n", shcmd + 1);
 		fflush(NULL); /* flush any buffered I/O */
-		system(shcmd + 1);
+		{ int sys_ret_ = system(shcmd + 1); (void)sys_ret_; }
 		if (!scripted) printf("!\n");
 		break;
 	case '\n':
@@ -1304,7 +1301,7 @@ exec_command(void)
 			return ERR;
 		}
 		GET_COMMAND_SUFFIX();
-		always_number = 1 - always_number;
+		always_number = !always_number;
 		break;
 	case 'F':
 		/* With an address range: print the per-line Adler-32 hash of
@@ -1324,12 +1321,12 @@ exec_command(void)
 			    fi++, flp = flp->q_forw) {
 				if ((fs = get_sbuf_line(flp)) == NULL)
 					return ERR;
-				printf("@%08lx\n", adler32_line(fs, flp->len));
+				printf("@%08" PRIx32 "\n", adler32_line(fs, flp->len));
 			}
 			current_addr = fsave;
 		} else {
 			GET_COMMAND_SUFFIX();
-			always_hash = 1 - always_hash;
+			always_hash = !always_hash;
 		}
 		break;
 	case 'y':
@@ -1368,17 +1365,17 @@ exec_command(void)
 		if (addr_last == 0) {
 			/* empty buffer: Adler-32 of zero bytes = 1 */
 			GET_COMMAND_SUFFIX();
-			printf("%08lx\n", 1UL);
+			printf("%08" PRIx32 "\n", UINT32_C(1));
 			break;
 		}
 		if (check_addr_range(1, addr_last) < 0)
 			return ERR;
 		GET_COMMAND_SUFFIX();
 		{
-			unsigned long csum;
+			uint32_t csum;
 			if (adler32_lines(first_addr, second_addr, &csum) < 0)
 				return ERR;
-			printf("%08lx\n", csum);
+			printf("%08" PRIx32 "\n", csum);
 		}
 		break;
 	default:
@@ -1394,19 +1391,18 @@ exec_command(void)
    newline separator.  NUL bytes in binary files are hashed as stored
    (not converted to newlines).  Returns 0 on success, ERR on I/O error. */
 static int
-adler32_lines(int first, int last, unsigned long *out)
+adler32_lines(int first, int last, uint32_t *out)
 {
-	unsigned long s1 = 1;
-	unsigned long s2 = 0;
+	uint32_t s1 = 1;
+	uint32_t s2 = 0;
 	line_t *lp;
 	char *s;
-	int n, i;
 
 	lp = get_addressed_line_node(first);
-	for (n = first; n <= last; n++, lp = lp->q_forw) {
+	for (int n = first; n <= last; n++, lp = lp->q_forw) {
 		if ((s = get_sbuf_line(lp)) == NULL)
 			return ERR;
-		for (i = 0; i < lp->len; i++) {
+		for (int i = 0; i < lp->len; i++) {
 			s1 = (s1 + (unsigned char)s[i]) % 65521UL;
 			s2 = (s2 + s1) % 65521UL;
 		}
@@ -1448,7 +1444,7 @@ get_matching_node_addr(ed_pattern_t *pat, int dir)
 
 	if (!pat) return ERR;
 	do {
-		if ((n = dir ? INC_MOD(n, addr_last) : DEC_MOD(n, addr_last))) {
+		if ((n = dir ? inc_mod(n, addr_last) : dec_mod(n, addr_last))) {
 			lp = get_addressed_line_node(n);
 			if ((s = get_sbuf_line(lp)) == NULL)
 				return ERR;
@@ -1628,7 +1624,7 @@ join_lines(int from, int to)
 	int size = 0;
 	line_t *bp, *ep;
 
-	ep = get_addressed_line_node(INC_MOD(to, addr_last));
+	ep = get_addressed_line_node(inc_mod(to, addr_last));
 	bp = get_addressed_line_node(from);
 	for (; bp != ep; bp = bp->q_forw) {
 		if ((s = get_sbuf_line(bp)) == NULL)
@@ -1659,7 +1655,7 @@ static int
 move_lines(int addr)
 {
 	line_t *b1, *a1, *b2, *a2;
-	int n = INC_MOD(second_addr, addr_last);
+	int n = inc_mod(second_addr, addr_last);
 	int p = first_addr - 1;
 	int done = (addr == first_addr - 1 || addr == second_addr);
 
@@ -1669,7 +1665,7 @@ move_lines(int addr)
 		b2 = get_addressed_line_node(p);
 		current_addr = second_addr;
 	} else if (push_undo_stack(UMOV, p, n) == NULL ||
-	    push_undo_stack(UMOV, addr, INC_MOD(addr, addr_last)) == NULL) {
+	    push_undo_stack(UMOV, addr, inc_mod(addr, addr_last)) == NULL) {
 		SPL0();
 		return ERR;
 	} else {
@@ -1684,9 +1680,9 @@ move_lines(int addr)
 					/* this get_addressed_line_node last! */
 		}
 		a2 = b2->q_forw;
-		REQUE(b2, b1->q_forw);
-		REQUE(a1->q_back, a2);
-		REQUE(b1, a1);
+		reque(b2, b1->q_forw);
+		reque(a1->q_back, a2);
+		reque(b1, a1);
 		current_addr = addr + ((addr < first_addr) ?
 		    second_addr - first_addr + 1 : 0);
 	}
@@ -1745,12 +1741,12 @@ delete_lines(int from, int to)
 		SPL0();
 		return ERR;
 	}
-	n = get_addressed_line_node(INC_MOD(to, addr_last));
+	n = get_addressed_line_node(inc_mod(to, addr_last));
 	p = get_addressed_line_node(from - 1);
 					/* this get_addressed_line_node last! */
 	if (isglobal)
 		unset_active_nodes(p->q_forw, n);
-	REQUE(p, n);
+	reque(p, n);
 	addr_last -= to - from + 1;
 	current_addr = from - 1;
 	modified = 1;
@@ -1763,17 +1759,18 @@ delete_lines(int from, int to)
 int
 display_lines(int from, int to, int gflag)
 {
-	if (always_number) gflag |= GNP;
-	if (always_hash)   gflag |= GHP;
 	line_t *bp;
 	line_t *ep;
 	char *s;
+
+	if (always_number) gflag |= GNP;
+	if (always_hash)   gflag |= GHP;
 
 	if (!from) {
 		seterrmsg("invalid address");
 		return ERR;
 	}
-	ep = get_addressed_line_node(INC_MOD(to, addr_last));
+	ep = get_addressed_line_node(inc_mod(to, addr_last));
 	bp = get_addressed_line_node(from);
 	for (; bp != ep; bp = bp->q_forw) {
 		if ((s = get_sbuf_line(bp)) == NULL)
@@ -1816,9 +1813,7 @@ get_marked_node_addr(int n)
 void
 unmark_line_node(line_t *lp)
 {
-	int i;
-
-	for (i = 0; markno && i < MAXMARK; i++)
+	for (int i = 0; markno && i < MAXMARK; i++)
 		if (mark[i] == lp) {
 			mark[i] = NULL;
 			markno--;
@@ -1837,8 +1832,7 @@ dup_line_node(line_t *lp)
 		seterrmsg("out of memory");
 		return NULL;
 	}
-	np->seek = lp->seek;
-	np->len = lp->len;
+	*np = (line_t){ .seek = lp->seek, .len = lp->len };
 	return np;
 }
 

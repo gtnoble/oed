@@ -45,7 +45,6 @@ static int get_stream_line(FILE *);
 static int write_stream(FILE *, int, int);
 static int put_stream_line(FILE *, char *, int);
 
-extern int scripted;
 
 /* read_file: read a named file/pipe into the buffer; return line count */
 int
@@ -75,7 +74,7 @@ read_file(char *fn, int n)
 
 static char *sbuf;		/* file i/o buffer */
 static int sbufsz;		/* file i/o buffer size */
-int newline_added;		/* if set, newline appended to input file */
+bool newline_added;		/* if set, newline appended to input file */
 
 /* read_stream: read a stream into the editor buffer; return status */
 static int
@@ -84,12 +83,12 @@ read_stream(FILE *fp, int n)
 	line_t *lp = get_addressed_line_node(n);
 	undo_t *up = NULL;
 	unsigned int size = 0;
-	int o_newline_added = newline_added;
-	int o_isbinary = isbinary;
-	int appended = (n == addr_last);
+	bool o_newline_added = newline_added;
+	bool o_isbinary = isbinary;
+	bool appended = (n == addr_last);
 	int len;
 
-	isbinary = newline_added = 0;
+	isbinary = false; newline_added = false;
 	for (current_addr = n; (len = get_stream_line(fp)) > 0; size += len) {
 		SPL1();
 		if (put_sbuf_line(sbuf) == NULL) {
@@ -115,7 +114,7 @@ read_stream(FILE *fp, int n)
 	if (isbinary && newline_added && !appended)
 	    	size += 1;
 	if (!size)
-		newline_added = 1;
+		newline_added = true;
 	newline_added = appended ? newline_added : o_newline_added;
 	isbinary = isbinary | o_isbinary;
 	return size;
@@ -143,7 +142,7 @@ get_stream_line(FILE *fp)
 		return ERR;
 	} else if (i) {
 		sbuf[i++] = '\n';
-		newline_added = 1;
+		newline_added = true;
 	}
 	sbuf[i] = '\0';
 	return (isbinary && newline_added && i) ? --i : i;
@@ -302,8 +301,6 @@ get_tty_line(void)
 #define ESCAPES "\a\b\f\n\r\t\v\\$"
 #define ESCCHARS "abfnrtv\\$"
 
-extern int rows;
-extern int cols;
 
 /* put_tty_line: print text to stdout */
 int
@@ -317,7 +314,7 @@ put_tty_line(char *s, int l, int n, int gflag)
 		col += 8;
 	}
 	if (gflag & GHP) {
-		printf("@%08lx\t", adler32_line(s, l));
+		printf("@%08" PRIx32 "\t", adler32_line(s, l));
 		col += 10;
 	}
 #if defined(HAVE_NL_LANGINFO) && defined(HAVE_WCWIDTH)

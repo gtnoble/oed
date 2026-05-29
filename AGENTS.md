@@ -3,7 +3,7 @@
 ## Project Overview
 
 **hed** (`hed`) is a portable port of OpenBSD's `ed(1)` line editor.  Its
-goal is to compile cleanly on any minimally POSIX-compliant OS using any C89
+goal is to compile cleanly on any minimally POSIX-compliant OS using any C99
 compiler.  The codebase is small (~6 500 lines of C) and self-contained: the
 OpenBSD regex engine is bundled so no external regex library is required.
 
@@ -138,7 +138,7 @@ functional area:
 | `t15_bre_ere.sh` | Comprehensive BRE (default) and ERE (`-E`) tests: errors, pattern reuse, BRE-specific syntax (`\{n,m\}`, `\(\)` backreferences in pattern and substitution), ERE-specific syntax (`+`, `?`, `{n,m}`, `\|`, `()`), POSIX bracket expressions (`[:alpha:]`, `[:digit:]`, `[:alnum:]`, `[:space:]`, `[:upper:]`, `[:lower:]`, `[:punct:]`, negated/range/edge-case classes), substitution edge cases (zero-length, nth, `&`, multi-capture), command interactions (`g`, `v`, `?re?`), flag combinations (`-n`, `-l`, `-e`, `-lT`) |
 | `t16_sub_assertions.sh` | `s` command agent-safety extensions: `=N` exact-count assertion, `D` dry-run, `!` all-or-nothing, `~re~` result-verify; rollback on assertion failure; `OK Nsubs` token format |
 
-**Tier 2 — C89 unit tests** (`tests/unit/`)  
+**Tier 2 — C99 unit tests** (`tests/unit/`)  
 `test_utils.c` tests pure utility functions (`has_trailing_escape`,
 `strip_escapes`, `translit_text`) by linking against the editor objects.
 `main.c` is compiled separately with `-Dmain=_hed_real_main` to avoid a
@@ -156,9 +156,6 @@ existing `test_utils` pattern, and add the binary name to `TESTBINS`.
 
 ## Coding Conventions
 
-- **C89 throughout** — no C99/C11 features (`//` comments, VLAs, `_Bool`,
-  designated initialisers, `<stdint.h>` types, etc.).  Every new function must
-  have a separate forward declaration.
 - **`ed.h` is the single shared header** — all types, macros, and prototypes
   live there.  Source files include it directly; do not add ad-hoc cross-file
   declarations.
@@ -204,6 +201,7 @@ existing `test_utils` pattern, and add the binary name to `TESTBINS`.
 | `loose` | Suppress some POSIX address errors |
 | `ibuf`, `ibufp`, `ibufsz` | Input line buffer and pointer |
 | `mutex`, `sighup`, `sigint` | Signal deferral state |
+| `utf8_locale` | Set at startup when `nl_langinfo(CODESET)` reports UTF-8; gates UTF-8-aware `l`-command column counting and printability |
 
 ---
 
@@ -265,13 +263,21 @@ multiplex descriptors.
 | `-T` | Transaction mode (dry-run/wet-run) — `w`/`W` are deferred; shell escapes forbidden; on any error roll back in-memory and exit 1 without writing; on clean exit execute all deferred writes |
 | `-v` | Garrulous mode — print explanation for every `?` to stderr |
 | `-E` | Use ERE instead of BRE |
-| `-P` | Use PCRE2 regular expressions; mutually exclusive with `-E`; requires build with libpcre2-8 |
+| `-P` | Use PCRE2 regular expressions; mutually exclusive with `-E`; requires build with libpcre2-8; patterns compiled with `PCRE2_UTF` so `.` and shorthand classes match complete UTF-8 codepoints rather than bytes |
 | `-n` | Always-number — prefix every output line with its line number; equivalent to running `N` at startup |
 | `-H` | Always-hash — prefix every output line with its per-line Adler-32 hash and a tab (`@xxxxxxxx\t`); equivalent to running `F` (toggle) at startup. When combined with `-n`, column order is `linenum\t@hash\tcontent`. Implied by `-M`. |
 | `-A` | Success token — print `OK <dot>` after every successful command, where `<dot>` is the current line number (e.g. `OK 3`); errors print `?` and do not print `OK`. For `s` commands, extended to `OK <dot> <N>subs` (e.g. `OK 3 2subs`) where N is the number of lines changed. |
 | `-e cmd` | Inline command — execute `cmd` as a command before reading stdin; repeatable; implies `-s` |
 | `-lT` | Combined loose + transaction — attempt all commands, commit writes only if every command succeeded; exit 1 and roll back if any error occurred |
 | `-M` | Machine/agent mode — convenience flag enabling `-s -A -v -l -T -H` simultaneously; does not imply `-n`. **Migration note**: existing `-M` scripts that parse printed line content will now see an extra `@xxxxxxxx\t` column before the content on every printed line. Scripts that only consume `OK N` and `?` tokens are unaffected. |
+
+**UTF-8 and locale:** `hed` calls `setlocale(LC_CTYPE, "")` at startup.  When
+`nl_langinfo(CODESET)` reports a UTF-8 locale (`utf8_locale = 1`) the `l`
+command decodes codepoints with `mbrtowc` and counts display columns with
+`wcwidth`, so printable Unicode is shown without octal escaping and fold
+boundaries are display-column–accurate.  In a non-UTF-8 locale the traditional
+byte-oriented behaviour is preserved.  BRE/ERE remain byte-oriented regardless
+of locale; use `-P` for codepoint-aware matching.
 | `-R` | Read-only mode — reject any mutating command (`a`, `c`, `d`, `e`, `E`, `i`, `j`, `m`, `r`, `s`, `t`, `u`, `w`, `W`, `x`, `!`); read and search commands continue to work; distinct from GNU ed's `-r` restricted mode |
 
 **Non-standard commands already implemented:**
@@ -336,8 +342,6 @@ Follow these rules on every change.
 - Do not run `./configure` unnecessarily — it overwrites `Makefile` and
   `config.h`, potentially changing build settings.
 - Do not add a test framework without first verifying it builds with all
-  supported C89 compilers.
+  supported C99 compilers.
 - Do not replace the bundled regex library with the system's unless you first
   audit for `REG_STARTEND` support on every target platform.
-- Do not use `getline(3)` (C99/POSIX 2008), `asprintf`, or other non-C89
-  stdio extensions.

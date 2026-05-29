@@ -187,6 +187,17 @@ Enables full PCRE2 syntax including lookahead, lookbehind, named captures,
 .Li \ed
 digit shorthand, possessive quantifiers, and Unicode properties.
 .Pq BRE .
+.Pp
+When
+.Fl P
+is active,
+.Nm
+compiles patterns with
+.Dv PCRE2_UTF
+so that
+.Ql \&.
+and shorthand character classes match complete UTF-8 codepoints rather
+than individual bytes.
 .It Fl T
 Transaction mode.
 Implements a dry-run/wet-run model: all editing commands execute normally
@@ -1249,3 +1260,21 @@ appends one on reading/writing it.
 In the case of a binary file,
 .Nm
 does not append a newline on reading/writing.
+.Pp
+.Nm
+calls
+.Xr setlocale 3
+with
+.Dv LC_CTYPE
+at startup.
+The
+.Ic l
+command is UTF-8-aware when
+.Xr nl_langinfo 3
+reports a UTF-8 locale: it folds at display-column boundaries and
+renders printable Unicode characters without octal escaping.
+In all other locales the traditional byte-oriented behaviour applies.
+The BRE and ERE regex engines remain byte-oriented regardless of locale;
+use
+.Fl P
+for codepoint-aware matching.

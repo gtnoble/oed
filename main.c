@@ -41,6 +41,8 @@
  *
  */
 
+#include "config.h"
+
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -57,6 +59,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <locale.h>
+#ifdef HAVE_NL_LANGINFO
+#include <langinfo.h>
+#endif
 
 #include "ed.h"
 
@@ -105,6 +111,7 @@ int interactive = 0;		/* if set, we are in interactive mode */
 int loose = 0;		/* if set, don't exit on command errors */
 int extended_re = 0;	/* if set, use extended regular expressions */
 int pcre_re = 0;	/* if set, use PCRE2 regular expressions */
+int utf8_locale = 0;	/* if set, locale is UTF-8 */
 int always_number = 0;	/* if set, always number printed lines */
 int always_hash = 0;	/* if set, always print hash of printed lines */
 int transact = 0;		/* if set, roll back all changes on error */
@@ -145,6 +152,15 @@ main(volatile int argc, char ** volatile argv)
 	int c, n;
 	int status = 0;
 
+	setlocale(LC_CTYPE, "");
+#ifdef HAVE_NL_LANGINFO
+	{
+		const char *cs = nl_langinfo(CODESET);
+		if (cs != NULL &&
+		    (strcmp(cs, "UTF-8") == 0 || strcmp(cs, "utf8") == 0))
+			utf8_locale = 1;
+	}
+#endif
 #ifdef HAVE_PLEDGE
 	if (pledge("stdio rpath wpath cpath proc exec tty", NULL) == -1)
 		err(1, "pledge");

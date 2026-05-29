@@ -245,3 +245,4 @@ extern int last_nsubs;
 extern int u_addr_last;
 extern int success_token;
 extern int readonly;
+extern int utf8_locale;

@@ -206,3 +206,25 @@ DEVIATIONS
    after a successful `s' command is extended to `OK dot Nsubs', where N
    is the count of lines changed by the substitution.  Non-substitution
    commands still print `OK dot'.
+
+7) Character encoding and locale:
+
+   hed calls setlocale(LC_CTYPE, "") at startup so that the user's
+   locale is respected for character-classification functions
+   (isprint, isalpha, etc.).
+
+   When nl_langinfo(CODESET) reports a UTF-8 locale the `l' command
+   uses mbrtowc(3) to decode multi-byte sequences and wcwidth(3) to
+   compute display column widths, so that the fold column is counted
+   in display columns rather than bytes and printable Unicode
+   characters are shown without octal escaping.
+
+   In LANG=C or any non-UTF-8 locale the `l' command retains the
+   traditional behaviour of octal-escaping every byte with value
+   outside 0x20-0x7e.
+
+   The BRE and ERE engines (default and -E) remain byte-oriented:
+   the `.` metacharacter matches one byte, not one Unicode codepoint.
+   Users who need codepoint-aware matching should use -P (PCRE2 mode).
+   In -P mode the PCRE2_UTF flag is set so that `.` and shorthand
+   classes match complete UTF-8 sequences.

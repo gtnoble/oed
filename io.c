@@ -28,11 +28,15 @@
  * SUCH DAMAGE.
  */
 
+#include "config.h"
+
 #include <regex.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <wchar.h>
+#include <wctype.h>
 
 #include "ed.h"
 
@@ -316,6 +320,75 @@ put_tty_line(char *s, int l, int n, int gflag)
 		printf("@%08lx\t", adler32_line(s, l));
 		col += 10;
 	}
+#if defined(HAVE_NL_LANGINFO) && defined(HAVE_WCWIDTH)
+	if (utf8_locale && (gflag & GLS)) {
+		/* UTF-8-aware list path: decode codepoints with mbrtowc */
+		mbstate_t mbs;
+		size_t nb;
+		memset(&mbs, 0, sizeof(mbs));
+		while (l > 0) {
+			wchar_t wc = 0;
+			int w;
+			nb = mbrtowc(&wc, s, (size_t)l, &mbs);
+			if (nb == (size_t)-1 || nb == (size_t)-2) {
+				/* Invalid or incomplete sequence: escape one byte */
+				nb = 1;
+				wc = (wchar_t)-1;
+				memset(&mbs, 0, sizeof(mbs));
+			} else if (nb == 0) {
+				/* NUL byte */
+				nb = 1;
+			}
+			if (wc != (wchar_t)-1 && iswprint(wc) &&
+			    wc != L'\\' && wc != L'$') {
+				w = wcwidth(wc);
+				if (w < 1) w = 1;
+				if (col + w > cols) {
+					fputs("\\\n", stdout);
+					col = 0;
+				}
+				/* print raw UTF-8 bytes */
+				{
+					size_t i;
+					for (i = 0; i < nb; i++)
+						putchar((unsigned char)s[i]);
+				}
+				col += w;
+			} else {
+				/* octal-escape each byte of the sequence */
+				size_t i;
+				for (i = 0; i < nb; i++) {
+					unsigned char b = (unsigned char)s[i];
+					if (b != 0 &&
+					    (cp = strchr(ESCAPES, (char)b)) != NULL) {
+						if (col + 2 > cols) {
+							fputs("\\\n", stdout);
+							col = 0;
+						}
+						putchar('\\');
+						putchar(ESCCHARS[cp - ESCAPES]);
+						col += 2;
+					} else {
+						if (col + 4 > cols) {
+							fputs("\\\n", stdout);
+							col = 0;
+						}
+						putchar('\\');
+						putchar(((b & 0300) >> 6) + '0');
+						putchar(((b & 0070) >> 3) + '0');
+						putchar( (b & 0007)        + '0');
+						col += 4;
+					}
+				}
+			}
+			s += nb;
+			l -= (int)nb;
+		}
+		putchar('$');
+		putchar('\n');
+		return 0;
+	}
+#endif /* HAVE_NL_LANGINFO && HAVE_WCWIDTH */
 	for (; l--; s++) {
 		if ((gflag & GLS) && ++col > cols) {
 			fputs("\\\n", stdout);
@@ -336,7 +409,6 @@ put_tty_line(char *s, int l, int n, int gflag)
 					col += 2;
 				}
 			}
-
 		} else
 			putchar(*s);
 	}

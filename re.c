@@ -188,7 +188,7 @@ get_compiled_pattern(void)
 			return NULL;
 		}
 		code = pcre2_compile((PCRE2_SPTR8)exps, PCRE2_ZERO_TERMINATED,
-		    0, &errcode, &erroffset, NULL);
+		    PCRE2_UTF | PCRE2_MATCH_INVALID_UTF, &errcode, &erroffset, NULL);
 		if (code == NULL) {
 			pcre2_get_error_message(errcode, pcre_errbuf,
 			    sizeof(pcre_errbuf));
@@ -322,7 +322,7 @@ ed_compile_pattern(const char *str)
 			return NULL;
 		}
 		code = pcre2_compile((PCRE2_SPTR8)str, PCRE2_ZERO_TERMINATED,
-		    0, &errcode, &erroffset, NULL);
+		    PCRE2_UTF | PCRE2_MATCH_INVALID_UTF, &errcode, &erroffset, NULL);
 		if (code == NULL) {
 			pcre2_get_error_message(errcode, pcre_errbuf,
 			    sizeof(pcre_errbuf));

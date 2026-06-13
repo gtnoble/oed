@@ -54,12 +54,14 @@ ed_pattern_free(ed_pattern_t *pat)
 	if (pat->is_pcre) {
 		pcre2_match_data_free(pat->pcre_mdata);
 		pcre2_code_free(pat->pcre_code);
+		free(pat->pat_str);
 		free(pat);
 		return;
 	}
 #endif
 	regfree(pat->posix);
 	free(pat->posix);
+	free(pat->pat_str);
 	free(pat);
 }
 
@@ -184,6 +186,7 @@ get_compiled_pattern(void)
 			seterrmsg("out of memory");
 			return NULL;
 		}
+		exp->pat_str = NULL;
 		code = pcre2_compile((PCRE2_SPTR8)exps, PCRE2_ZERO_TERMINATED,
 		    PCRE2_UTF | PCRE2_MATCH_INVALID_UTF, &errcode, &erroffset, NULL);
 		if (code == NULL) {
@@ -206,6 +209,11 @@ get_compiled_pattern(void)
 		exp->posix      = NULL;
 		exp->pcre_code  = code;
 		exp->pcre_mdata = mdata;
+		{
+			size_t n = strlen(exps) + 1;
+			if ((exp->pat_str = malloc(n)) != NULL)
+				memcpy(exp->pat_str, exps, n);
+		}
 		return exp;
 	}
 #endif
@@ -219,6 +227,7 @@ get_compiled_pattern(void)
 			seterrmsg("out of memory");
 			return NULL;
 		}
+		exp->pat_str = NULL;
 		if ((exp->posix = malloc(sizeof(regex_t))) == NULL) {
 			perror(NULL);
 			seterrmsg("out of memory");
@@ -235,6 +244,11 @@ get_compiled_pattern(void)
 			return exp = NULL;
 		}
 		exp->nsub = (int)exp->posix->re_nsub;
+		{
+			size_t n = strlen(exps) + 1;
+			if ((exp->pat_str = malloc(n)) != NULL)
+				memcpy(exp->pat_str, exps, n);
+		}
 		return exp;
 	}
 }
@@ -318,6 +332,7 @@ ed_compile_pattern(const char *str)
 			seterrmsg("out of memory");
 			return NULL;
 		}
+		p->pat_str = NULL;
 		code = pcre2_compile((PCRE2_SPTR8)str, PCRE2_ZERO_TERMINATED,
 		    PCRE2_UTF | PCRE2_MATCH_INVALID_UTF, &errcode, &erroffset, NULL);
 		if (code == NULL) {
@@ -340,6 +355,11 @@ ed_compile_pattern(const char *str)
 		p->posix      = NULL;
 		p->pcre_code  = code;
 		p->pcre_mdata = mdata;
+		{
+			size_t n = strlen(str) + 1;
+			if ((p->pat_str = malloc(n)) != NULL)
+				memcpy(p->pat_str, str, n);
+		}
 		return p;
 	}
 #endif
@@ -350,6 +370,7 @@ ed_compile_pattern(const char *str)
 		seterrmsg("out of memory");
 		return NULL;
 	}
+	p->pat_str = NULL;
 	if ((p->posix = malloc(sizeof(regex_t))) == NULL) {
 		seterrmsg("out of memory");
 		free(p);
@@ -368,5 +389,10 @@ ed_compile_pattern(const char *str)
 		}
 	}
 	p->nsub = (int)p->posix->re_nsub;
+	{
+		size_t n = strlen(str) + 1;
+		if ((p->pat_str = malloc(n)) != NULL)
+			memcpy(p->pat_str, str, n);
+	}
 	return p;
 }

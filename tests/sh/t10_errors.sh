@@ -65,4 +65,64 @@ else
     printf 'FAIL  %s: unsaved buffer on q exits 2 (expected 2, got %s)\n' \
         "$_current_file" "$_emod_exit"
 fi
+# No-match error message includes pattern in verbose output (s command)
+_got=$(printf 'a\nfoo\n.\ns/bar/baz/\nQ\n' | "$HED" -s -v 2>&1)
+if [ "$_got" = "$(printf 'script, line 4: no match for pattern "bar"\n?\n')" ]; then
+    _passes=$((_passes + 1))
+    printf 'PASS  %s: %s\n' "$_current_file" "s no match includes pattern in verbose output"
+else
+    _failures=$((_failures + 1))
+    printf 'FAIL  %s: s no match includes pattern in verbose output\n' "$_current_file"
+    printf '  expected: [script, line 4: no match for pattern "bar"\\n?]\n'
+    printf '  got:      [%s]\n' "$_got"
+fi
+
+# No-match error message includes pattern via search address
+_got=$(printf 'a\nfoo\n.\n/nomatch/p\nQ\n' | "$HED" -s -v 2>&1)
+if [ "$_got" = "$(printf 'script, line 4: no match for pattern "nomatch"\n?\n')" ]; then
+    _passes=$((_passes + 1))
+    printf 'PASS  %s: %s\n' "$_current_file" "search addr no match includes pattern in verbose output"
+else
+    _failures=$((_failures + 1))
+    printf 'FAIL  %s: search addr no match includes pattern in verbose output\n' "$_current_file"
+    printf '  expected: [script, line 4: no match for pattern "nomatch"\\n?]\n'
+    printf '  got:      [%s]\n' "$_got"
+fi
+
+# No-match error message includes hash value for hash address
+_got=$(printf 'a\nfoo\nbar\n.\n@deadbeef=\nQ\n' | "$HED" -s -v 2>&1)
+if [ "$_got" = "$(printf 'script, line 5: no match for hash address @deadbeef\n?\n')" ]; then
+    _passes=$((_passes + 1))
+    printf 'PASS  %s: %s\n' "$_current_file" "hash addr no match includes hash value in verbose output"
+else
+    _failures=$((_failures + 1))
+    printf 'FAIL  %s: hash addr no match includes hash value in verbose output\n' "$_current_file"
+    printf '  expected: [script, line 5: no match for hash address @deadbeef\\n?]\n'
+    printf '  got:      [%s]\n' "$_got"
+fi
+
+# PCRE2 s command no match includes pattern
+_got=$(printf 'a\nfoo\n.\ns/bar/baz/=1\nQ\n' | "$HED" -s -v -P 2>&1)
+if [ "$_got" = "$(printf 'script, line 4: no match for pattern "bar"\n?\n')" ]; then
+    _passes=$((_passes + 1))
+    printf 'PASS  %s: %s\n' "$_current_file" "s -P no match includes pattern in verbose output"
+else
+    _failures=$((_failures + 1))
+    printf 'FAIL  %s: s -P no match includes pattern in verbose output\n' "$_current_file"
+    printf '  expected: [script, line 4: no match for pattern "bar"\\n?]\n'
+    printf '  got:      [%s]\n' "$_got"
+fi
+
+# ERE s command no match includes pattern
+_got=$(printf 'a\nfoo\n.\ns/bar/baz/\nQ\n' | "$HED" -s -v -E 2>&1)
+if [ "$_got" = "$(printf 'script, line 4: no match for pattern "bar"\n?\n')" ]; then
+    _passes=$((_passes + 1))
+    printf 'PASS  %s: %s\n' "$_current_file" "s -E no match includes pattern in verbose output"
+else
+    _failures=$((_failures + 1))
+    printf 'FAIL  %s: s -E no match includes pattern in verbose output\n' "$_current_file"
+    printf '  expected: [script, line 4: no match for pattern "bar"\\n?]\n'
+    printf '  got:      [%s]\n' "$_got"
+
+fi
 report

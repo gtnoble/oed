@@ -563,7 +563,12 @@ next_addr(void)
 				}
 			}
 			if (!found) {
-				seterrmsg("no match for hash address");
+				{
+					char buf[256];
+					snprintf(buf, sizeof(buf),
+					    "no match for hash address @%08lx", h);
+					seterrmsg(buf);
+				}
 				return ERR;
 			}
 			addr = match;
@@ -1454,7 +1459,14 @@ get_matching_node_addr(ed_pattern_t *pat, int dir)
 				return n;
 		}
 	} while (n != current_addr);
-	seterrmsg("no match");
+	if (pat->pat_str != NULL) {
+		char buf[256];
+		snprintf(buf, sizeof(buf), "no match for pattern \"%s\"",
+		    pat->pat_str);
+		seterrmsg(buf);
+	} else {
+		seterrmsg("no match");
+	}
 	return  ERR;
 }
 

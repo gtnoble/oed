@@ -210,7 +210,14 @@ search_and_replace(ed_pattern_t *pat, int gflag, int kth, int exact_count,
 	}
 	current_addr = xa;
 	if (nsubs == 0 && !(gflag & GLB)) {
+	if (pat->pat_str != NULL) {
+		char buf[256];
+		snprintf(buf, sizeof(buf), "no match for pattern \"%s\"",
+		    pat->pat_str);
+		seterrmsg(buf);
+	} else {
 		seterrmsg("no match");
+	}
 		return ERR;
 	}
 	/* all-or-nothing: every line in range must have matched */

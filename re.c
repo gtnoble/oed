@@ -40,6 +40,37 @@
 #include "ed.h"
 
 static char *extract_pattern(int);
+/* pattern_has_newline: scan pattern string for \n (backslash-n).
+   Returns true if found outside of character classes, meaning the pattern
+   intends multi-line matching. */
+static bool
+pattern_has_newline(const char *s)
+{
+	while (*s) {
+		if (*s == '\\' && *(s + 1) == 'n')
+			return true;
+		if (*s == '[') {
+			/* skip past character class */
+			s++;
+			if (*s == '^')
+				s++;
+			if (*s == ']')
+				s++;
+			while (*s && *s != ']') {
+				if (*s == '\\')
+					s++;
+				if (*s)
+					s++;
+			}
+			if (*s == ']')
+				s++;
+			continue;
+		}
+		s++;
+	}
+	return false;
+}
+
 static char *parse_char_class(char *);
 
 
@@ -206,6 +237,7 @@ get_compiled_pattern(void)
 		}
 		exp->is_pcre    = 1;
 		exp->nsub       = (int)capturecount;
+		exp->multiline = pattern_has_newline(exps);
 		exp->posix      = NULL;
 		exp->pcre_code  = code;
 		exp->pcre_mdata = mdata;
@@ -244,6 +276,7 @@ get_compiled_pattern(void)
 			return exp = NULL;
 		}
 		exp->nsub = (int)exp->posix->re_nsub;
+		exp->multiline = pattern_has_newline(exps);
 		{
 			size_t n = strlen(exps) + 1;
 			if ((exp->pat_str = malloc(n)) != NULL)
@@ -352,6 +385,7 @@ ed_compile_pattern(const char *str)
 		}
 		p->is_pcre    = 1;
 		p->nsub       = (int)capturecount;
+		p->multiline = pattern_has_newline(str);
 		p->posix      = NULL;
 		p->pcre_code  = code;
 		p->pcre_mdata = mdata;
@@ -389,6 +423,7 @@ ed_compile_pattern(const char *str)
 		}
 	}
 	p->nsub = (int)p->posix->re_nsub;
+	p->multiline = pattern_has_newline(str);
 	{
 		size_t n = strlen(str) + 1;
 		if ((p->pat_str = malloc(n)) != NULL)

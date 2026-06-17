@@ -742,6 +742,36 @@ After computing each substitution result, tests the result against
 If any result line does not match, the entire substitution is rolled back.
 .El
 .Pp
+If the pattern
+.Ar re
+contains
+.Ic \en
+(backslash-n), the substitution enters multi-line mode: all lines
+in the address range are concatenated with newline separators, and
+the pattern is matched against the entire concatenated buffer.
+This enables substitutions that span line boundaries.
+Multi-line matching works best with the
+.Fl P
+(PCRE2) flag, where
+.Ic \en
+in the pattern naturally matches a newline character.
+Without
+.Fl P ,
+.Ic \en
+in the pattern is treated as a literal backslash-n pair by BRE/ERE
+and will not match across lines.
+All assertion suffixes
+.Ic =N ,
+.Ic \&! ,
+.Ic D ,
+and
+.Ic ~re~
+compose naturally with multi-line patterns.
+The global flag
+.Ic g
+finds all non-overlapping matches in the concatenated buffer.
+Binary files are rejected with an error message in multi-line mode.
+.Pp
 When
 .Fl A
 (always-token) mode is active, a successful
@@ -779,6 +809,20 @@ where
 is a number in the range [1,9], is replaced by the
 .Ar m Ns th
 backreference expression of the matched text.
+.Pp
+The escape sequence
+.Ic \en
+in
+.Ar replacement
+inserts a literal newline character, splitting the line at that point.
+The escape sequence
+.Ic \et
+inserts a literal tab character.
+All other unrecognized
+.Pf \e Ar x
+sequences drop the backslash and emit the character
+.Ar x
+literally, preserving backward compatibility.
 If
 .Ar replacement
 consists of a single

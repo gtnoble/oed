@@ -181,7 +181,33 @@ DEVIATIONS
    ed on a file whose name starts with bang, prefix the name with a
    backslash.
 
-5) The `s' (substitute) command accepts the following non-POSIX suffixes:
+5) The `s' (substitute) command accepts the following non-POSIX
+   features in the replacement and pattern:
+
+   Replacement escapes:
+
+   `\n'   In replacement text, inserts a literal newline character,
+           splitting the line at that point.  Allows a single-line
+           match to produce multi-line output.
+
+   `\t'   In replacement text, inserts a literal tab character.
+
+   Other unrecognized `\x' sequences drop the backslash and emit `x'
+   literally for backward compatibility.
+
+   Multi-line pattern matching:
+
+   When the search pattern (Ar re) contains `\n' (backslash-n), the
+   substitution enters multi-line mode: all lines in the address range
+   are concatenated with newline separators and the pattern is matched
+   against the entire concatenated buffer.  This enables substitutions
+   that span line boundaries.  Multi-line matching works best with
+   the `-P' (PCRE2) flag; without `-P', `\n' in the pattern is
+   treated as a literal backslash-n pair by BRE/ERE and will not match
+   across lines.  All assertion suffixes, the `g' flag, dry-run, and
+   undo compose naturally with multi-line patterns.
+
+   Suffixes:
 
    `D'     Dry-run mode: prints would-be substituted text for each
            matching line without modifying the buffer.  No change is

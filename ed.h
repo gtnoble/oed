@@ -62,6 +62,7 @@ typedef struct {
 /* Compiled pattern wrapper: holds either a POSIX regex_t or a PCRE2 pattern */
 typedef struct {
 	bool is_pcre;		/* if set, use PCRE2 fields below */
+	bool multiline;		/* pattern contains \n — multi-line match */
 	char *pat_str;		/* pattern string (for error messages) */
 	int  nsub;		/* number of capturing subexpressions */
 	regex_t *posix;		/* POSIX compiled pattern (non-PCRE path) */

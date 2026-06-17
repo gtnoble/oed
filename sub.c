@@ -134,6 +134,207 @@ search_and_replace(ed_pattern_t *pat, int gflag, int kth, int exact_count,
 	int len;
 	int range_size = second_addr - first_addr + 1;
 
+	/* Multi-line matching path: when pattern contains \n, concatenate
+	   all lines in the address range and match across line boundaries. */
+	if (pat->multiline) {
+		int concat_len = 0, concat_sz = 0;
+		char *concat = NULL;
+		int scan = 0;
+		int nempty = -1;
+		int matchno = 0;
+		int off = 0;
+		int i2 = 0;
+		ed_match_t rm[SE_MAX];
+
+		/* Build concatenated buffer of all lines in range */
+		for (lc = 0; lc < range_size; lc++) {
+			lp = get_addressed_line_node(first_addr + lc);
+			txt = get_sbuf_line(lp);
+			if (txt == NULL) {
+				free(concat);
+				return ERR;
+			}
+			len = lp->len;
+			REALLOC(concat, concat_sz, concat_len + len + 1, ERR);
+			memcpy(concat + concat_len, txt, len);
+			concat_len += len;
+			if (lc < range_size - 1)
+				concat[concat_len++] = '\n';
+		}
+
+		if (isbinary) {
+			seterrmsg("multi-line substitution not"
+			    " supported on binary files");
+			free(concat);
+			return ERR;
+		}
+
+		/* Match pattern against the concatenated buffer */
+		while (scan < concat_len) {
+			rm[0].rm_so = scan;
+			rm[0].rm_eo = concat_len;
+			if (ed_regexec(pat, concat, SE_MAX, rm,
+			    ED_REG_STARTEND) != 0)
+				break;
+			/* Skip zero-length match after non-zero-length */
+			if (rm[0].rm_eo == nempty) {
+				rm[0].rm_so++;
+				continue;
+			}
+			if (!kth || kth == ++matchno) {
+				/* Copy text before this match */
+				i2 = rm[0].rm_so - scan;
+				REALLOC(rbuf, rbufsz, off + i2, ERR);
+				memcpy(rbuf + off, concat + scan, i2);
+				off += i2;
+				/* Apply substitution template */
+				if ((off = apply_subst_template(concat, rm,
+				    off, pat->nsub)) < 0) {
+					free(concat);
+					return ERR;
+				}
+				nsubs++;
+			}
+			/* Advance past this match */
+			scan = rm[0].rm_eo;
+			if (rm[0].rm_so == rm[0].rm_eo)
+				scan = rm[0].rm_eo + 1;
+			else
+				nempty = rm[0].rm_so = rm[0].rm_eo;
+			if (!(gflag & GSG) && !kth)
+				break;
+			if (kth && matchno >= kth)
+				break;
+		}
+
+		/* Copy remaining text after last match */
+		i2 = concat_len - scan;
+		REALLOC(rbuf, rbufsz, off + i2 + 2, ERR);
+		if (i2 > 0)
+			memcpy(rbuf + off, concat + scan, i2);
+		off += i2;
+		/* Ensure trailing newline */
+		rbuf[off++] = '\n';
+		rbuf[off] = '\0';
+
+		free(concat);
+
+		/* If no matches, report error */
+		if (nsubs == 0 && !(gflag & GLB)) {
+			if (pat->pat_str != NULL) {
+				char buf[256];
+				snprintf(buf, sizeof(buf),
+				    "no match for pattern \"%s\"",
+				    pat->pat_str);
+				seterrmsg(buf);
+			} else {
+				seterrmsg("no match");
+			}
+			return ERR;
+		}
+
+		/* Verify each result line */
+		if (verify_pat != NULL) {
+			char *vline = rbuf;
+			char *vend  = rbuf + off;
+			while (vline != vend) {
+				char *vnl = vline;
+				while (vnl < vend && *vnl != '\n')
+					vnl++;
+				{
+					char save = *vnl;
+					*vnl = '\0';
+					if (ed_regexec(verify_pat, vline,
+					    0, NULL, 0) != 0) {
+						*vnl = save;
+						seterrmsg("result did not"
+						    " match verify pattern");
+						if (nsubs > 0 &&
+						    !(gflag & GDR))
+							pop_undo_stack();
+						return ERR;
+					}
+					*vnl = save;
+				}
+				vline = (vnl < vend) ? vnl + 1 : vend;
+			}
+		}
+
+		/* Dry-run: print result lines, skip buffer write */
+		if (gflag & GDR) {
+			txt = rbuf;
+			eot = rbuf + off;
+			do {
+				char *nl = txt;
+				while (nl < eot && *nl != '\n')
+					nl++;
+				put_tty_line(txt, (int)(nl - txt),
+				    current_addr, gflag);
+				txt = (nl < eot) ? nl + 1 : eot;
+			} while (txt != eot);
+			xa = current_addr;
+		} else {
+			/* Delete entire original range,
+			   insert all result lines */
+			if (delete_lines(first_addr,
+			    second_addr) < 0)
+				return ERR;
+			up = NULL;
+			txt = rbuf;
+			eot = rbuf + off;
+			SPL1();
+			do {
+				if ((txt = put_sbuf_line(txt))
+				    == NULL) {
+					SPL0();
+					return ERR;
+				} else if (up)
+					up->t =
+					    get_addressed_line_node(
+					    current_addr);
+				else if ((up = push_undo_stack(
+				    UADD, current_addr,
+				    current_addr)) == NULL) {
+					SPL0();
+					return ERR;
+				}
+			} while (txt != eot);
+			SPL0();
+			xa = current_addr;
+		}
+
+		/* All-or-nothing: must have matched */
+		if ((gflag & GAL) && nsubs == 0) {
+			seterrmsg(
+			    "not all lines in range matched");
+			if (nsubs > 0 && !(gflag & GDR))
+				pop_undo_stack();
+			return ERR;
+		}
+
+		/* Exact count assertion */
+		if (exact_count >= 0 && nsubs != exact_count) {
+			seterrmsg("substitution count mismatch");
+			if (nsubs > 0 && !(gflag & GDR))
+				pop_undo_stack();
+			return ERR;
+		}
+
+		current_addr = xa;
+		last_nsubs = nsubs;
+		if (garrulous)
+			fprintf(stderr, "%d substitution(s)\n",
+			    nsubs);
+		if (!(gflag & GDR) &&
+		    (gflag & (GPR | GLS | GNP)) &&
+		    display_lines(current_addr, current_addr,
+		    gflag) < 0)
+			return ERR;
+		return nsubs;
+	}
+
+
+
 	current_addr = first_addr - 1;
 	for (lc = 0; lc <= second_addr - first_addr; lc++) {
 		lp = get_addressed_line_node(++current_addr);
@@ -323,13 +524,29 @@ apply_subst_template(char *boln, ed_match_t *rm, int off, int re_nsub)
 			REALLOC(rbuf, rbufsz, off + k - j, ERR);
 			while (j < k)
 				rbuf[off++] = boln[j++];
-		} else if (*sub == '\\' && '1' <= *++sub && *sub <= '9' &&
-		    (n = *sub - '0') <= re_nsub) {
-			j = rm[n].rm_so;
-			k = rm[n].rm_eo;
-			REALLOC(rbuf, rbufsz, off + k - j, ERR);
-			while (j < k)
-				rbuf[off++] = boln[j++];
+		} else if (*sub == '\\') {
+			char esc = *++sub;
+			if ('1' <= esc && esc <= '9' &&
+			    (n = esc - '0') <= re_nsub) {
+				j = rm[n].rm_so;
+				k = rm[n].rm_eo;
+				REALLOC(rbuf, rbufsz, off + k - j, ERR);
+				while (j < k)
+					rbuf[off++] = boln[j++];
+			} else if (esc == 'n') {
+				/* \\n in replacement -> literal newline */
+				REALLOC(rbuf, rbufsz, off + 1, ERR);
+				rbuf[off++] = '\n';
+			} else if (esc == 't') {
+				/* \\t in replacement -> literal tab */
+				REALLOC(rbuf, rbufsz, off + 1, ERR);
+				rbuf[off++] = '\t';
+			} else {
+				/* unrecognized escape: emit character literally
+				   (same as old behaviour — backslash dropped) */
+				REALLOC(rbuf, rbufsz, off + 1, ERR);
+				rbuf[off++] = esc;
+			}
 		} else {
 			REALLOC(rbuf, rbufsz, off + 1, ERR);
 			rbuf[off++] = *sub;

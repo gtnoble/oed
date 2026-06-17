@@ -301,6 +301,8 @@ of locale; use `-P` for codepoint-aware matching.
 
 | Suffix | Effect |
 |---|---|
+| `\n` | In replacement text, inserts a literal newline (splits the line).  Use to produce multi-line output from a single `s` command.  Works in all regex modes. |
+| `\t` | In replacement text, inserts a literal tab character.  Works in all regex modes. |
 | `=N` | Exact-count assertion — fail (`?`) and roll back if the number of lines changed ≠ N. Most useful as `=1` to assert exactly one line was affected. |
 | `!` | All-or-nothing — fail and roll back if any line in the addressed range does not match the pattern. |
 | `D` | Dry-run — print each would-be substituted line without modifying the buffer; useful for verifying the regex before committing. |
@@ -309,6 +311,19 @@ of locale; use `-P` for codepoint-aware matching.
 Suffixes compose: `1,$s/foo/bar/=1` (exactly one change), `1,3s/old/new/!` (all three must match), `s/x/y/D` (preview), `s/x/y/~^y~` (verify result starts with `y`).
 
 When `-A` is active, a successful `s` command prints `OK <dot> <N>subs` (e.g. `OK 3 2subs`) rather than plain `OK <dot>`.
+
+**Multi-line matching (`\n` in pattern):** When a pattern contains `\n` (backslash-n), hed concatenates all lines in the address range with newline separators and matches the pattern against the entire concatenated buffer.  This enables substitutions that span line boundaries.  Multi-line matching works best with the `-P` (PCRE2) flag, where `\n` in the pattern naturally matches a newline character.  Without `-P`, `\n` in the pattern is treated as a literal backslash-n pair by BRE/ERE and will not match across lines.  All assertion suffixes (`=N`, `!`, `D`, `~re~`) compose naturally with multi-line patterns.  The `g` flag finds all non-overlapping matches in the concatenated buffer.  Binary files are rejected with a specific error message.  Examples:
+
+```
+# Replace a two-line block with a single line
+1,2s/alpha\nbeta/FOUND/       (with -P)
+
+# Replace a single line anchor with a two-line block
+s/int foo/LONG\nfoo/           (\n in replacement)
+
+# Match a function signature spanning three lines
+1,3s/int foo\(\n.*\n\)/LONG foo()/  (with -P)
+```
 
 ### Features not yet implemented
 

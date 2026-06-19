@@ -213,3 +213,21 @@ get_active_count(void)
 	clear_active_list();
 	return n;
 }
+
+/* get_active_count_noclear: return the number of lines in the active list
+   without clearing it. */
+int
+get_active_count_noclear(void)
+{
+	return active_last;
+}
+
+/* get_active_line_by_index: return a line node from the active list by
+   index.  Returns NULL if index is out of range. */
+line_t *
+get_active_line_by_index(int idx)
+{
+	if (idx < 0 || idx >= active_last)
+		return NULL;
+	return active_list[idx];
+}

@@ -64,6 +64,9 @@ typedef struct {
 	bool is_pcre;		/* if set, use PCRE2 fields below */
 	bool multiline;		/* pattern contains \n — multi-line match */
 	char *pat_str;		/* pattern string (for error messages) */
+	bool is_literal;
+	char *literal_search;
+	int  literal_slen;
 	int  nsub;		/* number of capturing subexpressions */
 	regex_t *posix;		/* POSIX compiled pattern (non-PCRE path) */
 #ifdef HAVE_PCRE2
@@ -190,6 +193,8 @@ void add_line_node(line_t *);
 int build_active_list(int);
 int get_active_count(void);
 int get_undo_depth(void);
+int get_active_count_noclear(void);
+line_t *get_active_line_by_index(int);
 void clear_active_list(void);
 void clear_undo_stack(void);
 int close_sbuf(void);
@@ -200,6 +205,7 @@ int exec_global(int, int);
 int extract_addr_range(void);
 int extract_subst_tail(int *, int *);
 line_t *get_addressed_line_node(int);
+int set_rhbuf(const char *, int);
 ed_pattern_t *get_compiled_pattern(void);
 char *get_extended_line(int *, int);
 int get_line_node_addr(line_t *);
@@ -261,6 +267,8 @@ extern bool success_token;
 extern bool readonly;
 extern bool utf8_locale;
 /* Additional globals not declared above (formerly via local extern) */
+extern bool literal_sub;
+extern int auto_context;
 extern bool garrulous;
 extern bool scripted;
 extern bool patlock;

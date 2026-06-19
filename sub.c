@@ -555,3 +555,19 @@ apply_subst_template(char *boln, ed_match_t *rm, int off, int re_nsub)
 	rbuf[off] = '\0';
 	return off;
 }
+
+/* set_rhbuf: copy a prepared replacement string (with \n/\t already
+   resolved) into the global rhbuf.  Called by the R command. */
+int
+set_rhbuf(const char *repl, int len)
+{
+	int i;
+	for (i = 0; i < len; i++) {
+		REALLOC(rhbuf, rhbufsz, i + 2, ERR);
+		rhbuf[i] = repl[i];
+	}
+	REALLOC(rhbuf, rhbufsz, i + 1, ERR);
+	rhbuf[i] = '\0';
+	rhbufi = i;
+	return 0;
+}

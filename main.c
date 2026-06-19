@@ -117,6 +117,8 @@ bool always_hash = false;	/* if set, always print hash of printed lines */
 bool transact = false;		/* if set, roll back all changes on error */
 bool had_error = false;		/* if set, an error occurred during -lT transaction */
 
+bool literal_sub = false;		/* if set, use literal matching in s command */
+int auto_context = 0;		/* if >0, print N lines of context after each command */
 volatile sig_atomic_t mutex = 0;  /* if set, signals set flags */
 volatile sig_atomic_t sighup = 0; /* if set, sighup received while mutex set */
 volatile sig_atomic_t sigint = 0; /* if set, sigint received while mutex set */
@@ -129,7 +131,7 @@ int addr_last;			/* last address in editor buffer */
 int lineno;			/* script line number */
 static char *prompt;		/* command-line prompt */
 static char *dps = "*";		/* default command-line prompt */
-static const char usage[] = "usage: %s [-] [-s] [-l] [-v] [-E] [-P] [-n] [-A] [-e cmd] [-p string] [file]\n";
+static const char usage[] = "usage: %s [-] [-s] [-l] [-v] [-E] [-P] [-n] [-A] [-C N] [-L] [-e cmd] [-p string] [file]\n";
 
 static char *home;		/* home directory */
 
@@ -169,7 +171,7 @@ main(volatile int argc, char ** volatile argv)
 	home = getenv("HOME");
 
 top:
-	while ((c = getopt(argc, argv, "p:slvETnAMHe:PR")) != -1)
+	while ((c = getopt(argc, argv, "p:slvETnAMHe:PRC:L")) != -1)
 		switch (c) {
 		case 'p':				/* set prompt */
 			dps = prompt = optarg;
@@ -220,6 +222,13 @@ top:
 		case 'R':				/* read-only mode */
 			readonly = 1;
 			break;
+			case 'L':				/* literal substitution */
+				literal_sub = 1;
+				break;
+			case 'C':				/* auto-context lines */
+				STRTOI(auto_context, optarg);
+				if (auto_context < 0) auto_context = 0;
+				break;
 		case 'e':				/* inline command */
 			if (n_ecmds < 256)
 				e_cmds[n_ecmds++] = optarg;
@@ -354,7 +363,11 @@ top:
 			if (!status || (status &&
 			    (status = display_lines(current_addr, current_addr,
 				status)) >= 0)) {
-			if (success_token)
+			if (auto_context > 0) {
+				int ctx_start = max(1, current_addr - auto_context);
+				int ctx_end = min(addr_last, current_addr + auto_context);
+				display_lines(ctx_start, ctx_end, 0);
+			}
 			if (success_token) {
 				if (last_nsubs >= 0)
 					printf("OK %d %dsubs\n",
@@ -426,7 +439,6 @@ top:
 	}
 	/*NOTREACHED*/
 }
-
 int first_addr, second_addr, addr_cnt;
 
 /* extract_addr_range: get line addresses from the command buffer until an
@@ -1365,6 +1377,250 @@ exec_command(void)
 			return ERR;
 		GET_COMMAND_SUFFIX();
 		printf("%d\n", get_active_count());
+		break;
+	case 'S':
+		if (isglobal) {
+			seterrmsg("cannot nest global commands");
+			return ERR;
+		}
+		if (check_addr_range(1, addr_last) < 0)
+			return ERR;
+		if (build_active_list(1) < 0)
+			return ERR;
+		GET_COMMAND_SUFFIX();
+		{
+			int scnt = get_active_count_noclear();
+			int saved = current_addr;
+			for (int si = 0; si < scnt; si++) {
+				line_t *slp = get_active_line_by_index(si);
+				int sa = get_line_node_addr(slp);
+				char *ss = get_sbuf_line(slp);
+				if (ss == NULL || sa < 0) {
+					clear_active_list();
+					return ERR;
+				}
+				current_addr = sa;
+				display_lines(sa, sa, 0);
+			}
+			current_addr = saved;
+			clear_active_list();
+		}
+		break;
+	case 'R':
+	{
+		char rdelim;
+		int r_gflag = 0;
+		int r_sgnum = 0;
+		int r_sgcount = -1;
+		char *rsearch_lit = NULL;
+		int rsearch_lit_sz = 0;
+		int rsearch_lit_len = 0;
+		char *rrepl_lit = NULL;
+		int rrepl_lit_sz = 0;
+		int rrepl_lit_len = 0;
+		ed_pattern_t *rpat = NULL;
+		ed_pattern_t *r_verify = NULL;
+
+		if (*ibufp == '\n' || *ibufp == ' ') {
+			seterrmsg("invalid pattern delimiter");
+			return ERR;
+		}
+		rdelim = *ibufp++;
+
+		/* extract search text with \n/\t resolution */
+		while (*ibufp != rdelim && *ibufp != '\n') {
+			if (*ibufp == '\\') {
+				ibufp++;
+				if (*ibufp == 'n') {
+					REALLOC(rsearch_lit, rsearch_lit_sz,
+					    rsearch_lit_len + 1, ERR);
+					rsearch_lit[rsearch_lit_len++] = '\n';
+					ibufp++;
+				} else if (*ibufp == 't') {
+					REALLOC(rsearch_lit, rsearch_lit_sz,
+					    rsearch_lit_len + 1, ERR);
+					rsearch_lit[rsearch_lit_len++] = '\t';
+					ibufp++;
+				} else if (*ibufp == '\0' || *ibufp == '\n') {
+					REALLOC(rsearch_lit, rsearch_lit_sz,
+					    rsearch_lit_len + 1, ERR);
+					rsearch_lit[rsearch_lit_len++] = '\\';
+				} else {
+					REALLOC(rsearch_lit, rsearch_lit_sz,
+					    rsearch_lit_len + 1, ERR);
+					rsearch_lit[rsearch_lit_len++] = *ibufp++;
+				}
+			} else {
+				REALLOC(rsearch_lit, rsearch_lit_sz,
+				    rsearch_lit_len + 1, ERR);
+				rsearch_lit[rsearch_lit_len++] = *ibufp++;
+			}
+		}
+		if (*ibufp == rdelim)
+			ibufp++;
+
+		/* extract replacement text */
+		while (*ibufp != rdelim && *ibufp != '\n') {
+			if (*ibufp == '\\') {
+				ibufp++;
+				if (*ibufp == 'n') {
+					REALLOC(rrepl_lit, rrepl_lit_sz,
+					    rrepl_lit_len + 1, ERR);
+					rrepl_lit[rrepl_lit_len++] = '\n';
+					ibufp++;
+				} else if (*ibufp == 't') {
+					REALLOC(rrepl_lit, rrepl_lit_sz,
+					    rrepl_lit_len + 1, ERR);
+					rrepl_lit[rrepl_lit_len++] = '\t';
+					ibufp++;
+				} else if (*ibufp == '\0' || *ibufp == '\n') {
+					REALLOC(rrepl_lit, rrepl_lit_sz,
+					    rrepl_lit_len + 1, ERR);
+					rrepl_lit[rrepl_lit_len++] = '\\';
+				} else {
+					REALLOC(rrepl_lit, rrepl_lit_sz,
+					    rrepl_lit_len + 1, ERR);
+					rrepl_lit[rrepl_lit_len++] = *ibufp++;
+				}
+			} else {
+				REALLOC(rrepl_lit, rrepl_lit_sz,
+				    rrepl_lit_len + 1, ERR);
+				rrepl_lit[rrepl_lit_len++] = *ibufp++;
+			}
+		}
+		if (*ibufp == rdelim)
+			ibufp++;
+
+		REALLOC(rsearch_lit, rsearch_lit_sz,
+		    rsearch_lit_len + 1, ERR);
+		rsearch_lit[rsearch_lit_len] = '\0';
+
+		/* parse suffixes: g, count, p, l, n, D, !, =N, ~re~ */
+		{
+			int r_done = 0;
+			do {
+				switch (*ibufp) {
+				case 'g':
+					r_gflag |= GSG;
+					ibufp++;
+					break;
+				case 'p':
+					r_gflag |= GPR;
+					ibufp++;
+					break;
+				case 'l':
+					r_gflag |= GLS;
+					ibufp++;
+					break;
+				case 'n':
+					r_gflag |= GNP;
+					ibufp++;
+					break;
+				case 'D':
+					r_gflag |= GDR;
+					ibufp++;
+					break;
+				case '!':
+					r_gflag |= GAL;
+					ibufp++;
+					break;
+				case '0': case '1': case '2': case '3':
+				case '4': case '5': case '6': case '7':
+				case '8': case '9':
+					STRTOI(r_sgnum, ibufp);
+					break;
+				case '=':
+					ibufp++;
+					STRTOI(r_sgcount, ibufp);
+					break;
+				default:
+					r_done = 1;
+				}
+			} while (!r_done);
+		}
+
+		/* parse optional ~verify_pattern~ suffix */
+		if (*ibufp == '~') {
+			char *vstart;
+			char *vend;
+			char *vstr;
+			int vlen;
+			ibufp++;
+			vstart = ibufp;
+			while (*ibufp != '~' && *ibufp != '\n')
+				ibufp++;
+			vend = ibufp;
+			if (*ibufp == '~')
+				ibufp++;
+			vlen = (int)(vend - vstart);
+			if ((vstr = malloc((size_t)(vlen + 1))) == NULL) {
+				seterrmsg("out of memory");
+				free(rsearch_lit);
+				return ERR;
+			}
+			memcpy(vstr, vstart, (size_t)vlen);
+			vstr[vlen] = '\0';
+			r_verify = ed_compile_pattern(vstr);
+			free(vstr);
+			if (r_verify == NULL) {
+				free(rsearch_lit);
+				return ERR;
+			}
+		}
+
+		if (check_addr_range(current_addr, current_addr) < 0) {
+			free(rsearch_lit);
+			if (r_verify) ed_pattern_free(r_verify);
+			return ERR;
+		}
+		GET_COMMAND_SUFFIX();
+
+		/* Build literal pattern */
+		if ((rpat = malloc(sizeof(ed_pattern_t))) == NULL) {
+			seterrmsg("out of memory");
+			free(rsearch_lit);
+			if (r_verify) ed_pattern_free(r_verify);
+			return ERR;
+		}
+		rpat->is_literal = 1;
+		rpat->literal_search = rsearch_lit;
+		rpat->literal_slen = rsearch_lit_len;
+		rpat->nsub = 0;
+		rpat->multiline = (memchr(rsearch_lit, '\n',
+		    rsearch_lit_len) != NULL);
+		rpat->is_pcre = 0;
+		rpat->posix = NULL;
+		rpat->pat_str = NULL;
+		{
+			size_t pn = (size_t)rsearch_lit_len + 1;
+			if ((rpat->pat_str = malloc(pn)) != NULL)
+				memcpy(rpat->pat_str, rsearch_lit, pn);
+		}
+
+		/* Set replacement text in rhbuf */
+		if (set_rhbuf(rrepl_lit, rrepl_lit_len) < 0) {
+			ed_pattern_free(rpat);
+			free(rrepl_lit);
+			if (r_verify) ed_pattern_free(r_verify);
+			return ERR;
+		}
+		free(rrepl_lit);
+
+		if (isglobal)
+			r_gflag |= GLB;
+		if (!isglobal && !transact)
+			clear_undo_stack();
+		if (search_and_replace(rpat, r_gflag, r_sgnum,
+		    r_sgcount, r_verify) < 0) {
+			/* search_and_replace may have popped undo on failure,
+			   but we still need to clean up */
+			ed_pattern_free(rpat);
+			if (r_verify) ed_pattern_free(r_verify);
+			return ERR;
+		}
+		ed_pattern_free(rpat);
+		if (r_verify) ed_pattern_free(r_verify);
+	}
 		break;
 	case 'Z':
 		if (addr_last == 0) {

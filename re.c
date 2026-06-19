@@ -79,6 +79,12 @@ static char *parse_char_class(char *);
 void
 ed_pattern_free(ed_pattern_t *pat)
 {
+	if (pat->is_literal) {
+		free(pat->literal_search);
+		free(pat->pat_str);
+		free(pat);
+		return;
+	}
 	if (pat == NULL)
 		return;
 #ifdef HAVE_PCRE2
@@ -107,6 +113,42 @@ int
 ed_regexec(ed_pattern_t *pat, const char *txt, int nmatch, ed_match_t *rm,
     int flags)
 {
+	if (pat->is_literal) {
+		const char *start, *end;
+		int i, hlen, nlen;
+		if (flags & ED_REG_STARTEND) {
+			start = txt + rm[0].rm_so;
+			end   = txt + rm[0].rm_eo;
+		} else {
+			start = txt;
+			end   = txt + strlen(txt);
+		}
+		if (pat->literal_slen == 0) {
+			if (nmatch > 0 && rm != NULL) {
+				rm[0].rm_so = rm[0].rm_eo = (int)(start - txt);
+				for (i = 1; i < nmatch; i++)
+					rm[i].rm_so = rm[i].rm_eo = -1;
+			}
+			return 0;
+		}
+		hlen = (int)(end - start);
+		nlen = pat->literal_slen;
+		if (nlen > hlen)
+			return 1;
+		for (i = 0; i <= hlen - nlen; i++) {
+			if (memcmp(start + i, pat->literal_search, nlen) == 0) {
+				if (nmatch > 0 && rm != NULL) {
+					int j;
+					rm[0].rm_so = (int)(start + i - txt);
+					rm[0].rm_eo = (int)(start + i + nlen - txt);
+					for (j = 1; j < nmatch; j++)
+						rm[j].rm_so = rm[j].rm_eo = -1;
+				}
+				return 0;
+			}
+		}
+		return 1;
+	}
 #ifdef HAVE_PCRE2
 	if (pat->is_pcre) {
 		int i, rc;
@@ -202,6 +244,57 @@ get_compiled_pattern(void)
 		ed_pattern_free(exp);
 	exp = NULL;
 	patlock = 0;
+	if (literal_sub) {
+		int slen = 0;
+		const char *s = exps;
+		char *lit = NULL;
+		int litsz = 0;
+		int li = 0;
+
+		while (*s) {
+			if (*s == '\\' && *(s + 1) == 'n') {
+				REALLOC(lit, litsz, li + 1, NULL);
+				lit[li++] = '\n';
+				s += 2;
+			} else if (*s == '\\' && *(s + 1) == 't') {
+				REALLOC(lit, litsz, li + 1, NULL);
+				lit[li++] = '\t';
+				s += 2;
+			} else if (*s == '\\') {
+				s++;
+				if (*s) {
+					REALLOC(lit, litsz, li + 1, NULL);
+					lit[li++] = *s++;
+				}
+			} else {
+				REALLOC(lit, litsz, li + 1, NULL);
+				lit[li++] = *s++;
+			}
+		}
+		REALLOC(lit, litsz, li + 1, NULL);
+		lit[li] = '\0';
+		slen = li;
+
+		if ((exp = malloc(sizeof(ed_pattern_t))) == NULL) {
+			perror(NULL);
+			seterrmsg("out of memory");
+			free(lit);
+			return NULL;
+		}
+		exp->is_literal = 1;
+		exp->literal_search = lit;
+		exp->literal_slen = slen;
+		exp->nsub = 0;
+		exp->multiline = (memchr(lit, '\n', slen) != NULL);
+		exp->is_pcre = 0;
+		exp->posix = NULL;
+		{
+			size_t n = strlen(exps) + 1;
+			if ((exp->pat_str = malloc(n)) != NULL)
+				memcpy(exp->pat_str, exps, n);
+		}
+		return exp;
+	}
 
 #ifdef HAVE_PCRE2
 	if (pcre_re) {
@@ -236,6 +329,7 @@ get_compiled_pattern(void)
 			return exp = NULL;
 		}
 		exp->is_pcre    = 1;
+		exp->is_literal = 0;
 		exp->nsub       = (int)capturecount;
 		exp->multiline = pattern_has_newline(exps);
 		exp->posix      = NULL;
@@ -267,6 +361,7 @@ get_compiled_pattern(void)
 			return exp = NULL;
 		}
 		exp->is_pcre = 0;
+		exp->is_literal = 0;
 		if ((n = regcomp(exp->posix, exps,
 		    extended_re ? REG_EXTENDED : 0)) != 0) {
 			regerror(n, exp->posix, errbuf, sizeof errbuf);
@@ -351,6 +446,57 @@ ed_compile_pattern(const char *str)
 {
 	char errbuf[128];
 	ed_pattern_t *p;
+	if (literal_sub) {
+		int slen = 0;
+		const char *s = str;
+		char *lit = NULL;
+		int litsz = 0;
+		int li = 0;
+
+		while (*s) {
+			if (*s == '\\' && *(s + 1) == 'n') {
+				REALLOC(lit, litsz, li + 1, NULL);
+				lit[li++] = '\n';
+				s += 2;
+			} else if (*s == '\\' && *(s + 1) == 't') {
+				REALLOC(lit, litsz, li + 1, NULL);
+				lit[li++] = '\t';
+				s += 2;
+			} else if (*s == '\\') {
+				s++;
+				if (*s) {
+					REALLOC(lit, litsz, li + 1, NULL);
+					lit[li++] = *s++;
+				}
+			} else {
+				REALLOC(lit, litsz, li + 1, NULL);
+				lit[li++] = *s++;
+			}
+		}
+		REALLOC(lit, litsz, li + 1, NULL);
+		lit[li] = '\0';
+		slen = li;
+
+		if ((p = malloc(sizeof(ed_pattern_t))) == NULL) {
+			perror(NULL);
+			seterrmsg("out of memory");
+			free(lit);
+			return NULL;
+		}
+		p->is_literal = 1;
+		p->literal_search = lit;
+		p->literal_slen = slen;
+		p->nsub = 0;
+		p->multiline = (memchr(lit, '\n', slen) != NULL);
+		p->is_pcre = 0;
+		p->posix = NULL;
+		{
+			size_t n = strlen(str) + 1;
+			if ((p->pat_str = malloc(n)) != NULL)
+				memcpy(p->pat_str, str, n);
+		}
+		return p;
+	}
 
 #ifdef HAVE_PCRE2
 	if (pcre_re) {
@@ -384,6 +530,7 @@ ed_compile_pattern(const char *str)
 			return NULL;
 		}
 		p->is_pcre    = 1;
+		p->is_literal = 0;
 		p->nsub       = (int)capturecount;
 		p->multiline = pattern_has_newline(str);
 		p->posix      = NULL;
@@ -411,6 +558,7 @@ ed_compile_pattern(const char *str)
 		return NULL;
 	}
 	p->is_pcre = 0;
+	p->is_literal = 0;
 	{
 		int n;
 		if ((n = regcomp(p->posix, str,

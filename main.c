@@ -351,11 +351,10 @@ top:
 				quit(0);
 			}
 		} else if (ibuf[n - 1] != '\n') {
-			/* discard line */
-			seterrmsg("unexpected end-of-file");
-			clearerr(stdin);
-			status = ERR;
-			continue;
+		if (n < ibufsz) {
+			ibuf[n++] = '\n';
+			ibuf[n] = '\0';
+		}
 		}
 		isglobal = 0;
 		if ((status = extract_addr_range()) >= 0 &&
@@ -1556,6 +1555,7 @@ exec_command(void)
 			if ((vstr = malloc((size_t)(vlen + 1))) == NULL) {
 				seterrmsg("out of memory");
 				free(rsearch_lit);
+				free(rrepl_lit);
 				return ERR;
 			}
 			memcpy(vstr, vstart, (size_t)vlen);
@@ -1564,12 +1564,14 @@ exec_command(void)
 			free(vstr);
 			if (r_verify == NULL) {
 				free(rsearch_lit);
+				free(rrepl_lit);
 				return ERR;
 			}
 		}
 
 		if (check_addr_range(current_addr, current_addr) < 0) {
 			free(rsearch_lit);
+			free(rrepl_lit);
 			if (r_verify) ed_pattern_free(r_verify);
 			return ERR;
 		}
@@ -1579,6 +1581,7 @@ exec_command(void)
 		if ((rpat = malloc(sizeof(ed_pattern_t))) == NULL) {
 			seterrmsg("out of memory");
 			free(rsearch_lit);
+			free(rrepl_lit);
 			if (r_verify) ed_pattern_free(r_verify);
 			return ERR;
 		}

@@ -40,7 +40,7 @@
 
 static char *extract_subst_template(void);
 static int substitute_matching_text(ed_pattern_t *, line_t *, int, int);
-static int apply_subst_template(char *, ed_match_t *, int, int);
+static int apply_subst_template(char *, ed_match_t *, int, int, bool);
 
 static char *rhbuf;		/* rhs substitution buffer */
 static int rhbufsz;		/* rhs substitution buffer size */
@@ -189,7 +189,7 @@ search_and_replace(ed_pattern_t *pat, int gflag, int kth, int exact_count,
 				off += i2;
 				/* Apply substitution template */
 				if ((off = apply_subst_template(concat, rm,
-				    off, pat->nsub)) < 0) {
+				    off, pat->nsub, pat->literal_repl)) < 0) {
 					free(concat);
 					return ERR;
 				}
@@ -483,7 +483,7 @@ substitute_matching_text(ed_pattern_t *pat, line_t *lp, int gflag, int kth)
 				memcpy(rbuf + off, eom, i);
 				off += i;
 			if ((off = apply_subst_template(txt, rm, off,
-			    pat->nsub)) < 0)
+			    pat->nsub, pat->literal_repl)) < 0)
 					return ERR;
 				eom = txt + rm[0].rm_eo;
 				if (kth)
@@ -510,8 +510,16 @@ substitute_matching_text(ed_pattern_t *pat, line_t *lp, int gflag, int kth)
 /* apply_subst_template: modify text according to a substitution template;
    return offset to end of modified text */
 static int
-apply_subst_template(char *boln, ed_match_t *rm, int off, int re_nsub)
+apply_subst_template(char *boln, ed_match_t *rm, int off, int re_nsub, bool literal_repl)
 {
+	if (literal_repl) {
+		int rlen = rhbufi;
+		REALLOC(rbuf, rbufsz, off + rlen + 1, ERR);
+		memcpy(rbuf + off, rhbuf, rlen);
+		off += rlen;
+		rbuf[off] = '\0';
+		return off;
+	}
 	int j = 0;
 	int k = 0;
 	int n;

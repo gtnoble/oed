@@ -278,7 +278,7 @@ command decodes codepoints with `mbrtowc` and counts display columns with
 boundaries are display-column–accurate.  In a non-UTF-8 locale the traditional
 byte-oriented behaviour is preserved.  BRE/ERE remain byte-oriented regardless
 of locale; use `-P` for codepoint-aware matching.
-| `-R` | Read-only mode — reject any mutating command (`a`, `c`, `d`, `e`, `E`, `i`, `j`, `m`, `r`, `s`, `t`, `u`, `w`, `W`, `x`, `!`); read and search commands continue to work; distinct from GNU ed's `-r` restricted mode |
+| `-R` | Read-only mode — reject any mutating command (`a`, `c`, `d`, `e`, `E`, `i`, `j`, `m`, `r`, `R`, `s`, `t`, `u`, `w`, `W`, `x`, `!`); read and search commands continue to work; distinct from GNU ed's `-r` restricted mode |
 
 **Non-standard commands already implemented:**
 

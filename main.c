@@ -1586,6 +1586,7 @@ exec_command(void)
 			return ERR;
 		}
 		rpat->is_literal = 1;
+		rpat->literal_repl = 1;
 		rpat->literal_search = rsearch_lit;
 		rpat->literal_slen = rsearch_lit_len;
 		rpat->nsub = 0;

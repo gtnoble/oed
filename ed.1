@@ -1085,6 +1085,66 @@ On an empty buffer the output is
 .Pq the Adler-32 of zero bytes ,
 without returning an error.
 The current address is unchanged.
+.It (.,.) Ns Ic R Ns / Ar search Ns / Ar replacement Ns / Op Ar flags
+Literal replace.
+Substitutes literal text
+.Ar search
+with
+.Ar replacement
+in the addressed lines, with no regular expression interpretation.
+Any non-alphanumeric character may be used as the delimiter.
+The escape sequences
+.Ic \en
+and
+.Ic \et
+in
+.Ar search
+resolve to newline and tab respectively;
+.Ic \en
+enables multi-line literal matching.
+In
+.Ar replacement ,
+.Ic \en
+inserts a literal newline
+.Pq splitting the line ,
+.Ic \et
+inserts a literal tab,
+and
+.Ql &
+and backreferences
+.Po Ic \e1 No \(en Ic \e9 Pc
+are treated as literal text
+.Pq no match insertion .
+All
+.Ic s
+command suffixes
+.Ic g ,
+.Ic p ,
+.Ic l ,
+.Ic n ,
+a numeric
+.Ar n Ns th
+match count,
+.Ic =N ,
+.Ic \&! ,
+.Ic D ,
+and
+.Ic ~re~
+compose naturally.
+The current address is set to the last line affected.
+.Pp
+When
+.Fl A
+(always-token) mode is active, a successful
+.Ic R
+command prints
+.Sm off
+.Ic OK Ar \ dot Ar \ N Ns Ic subs
+.Sm on
+where
+.Ar N
+is the count of lines changed.
+.Pp
 .It Ic F
 Without an address, toggles the
 .Em always-hash

@@ -67,6 +67,7 @@ typedef struct {
 	bool is_literal;
 	char *literal_search;
 	int  literal_slen;
+	bool literal_repl;
 	int  nsub;		/* number of capturing subexpressions */
 	regex_t *posix;		/* POSIX compiled pattern (non-PCRE path) */
 #ifdef HAVE_PCRE2

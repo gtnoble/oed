@@ -282,6 +282,7 @@ get_compiled_pattern(void)
 			return NULL;
 		}
 		exp->is_literal = 1;
+		exp->literal_repl = 0;
 		exp->literal_search = lit;
 		exp->literal_slen = slen;
 		exp->nsub = 0;
@@ -330,6 +331,7 @@ get_compiled_pattern(void)
 		}
 		exp->is_pcre    = 1;
 		exp->is_literal = 0;
+		exp->literal_repl = 0;
 		exp->nsub       = (int)capturecount;
 		exp->multiline = pattern_has_newline(exps);
 		exp->posix      = NULL;
@@ -362,6 +364,7 @@ get_compiled_pattern(void)
 		}
 		exp->is_pcre = 0;
 		exp->is_literal = 0;
+		exp->literal_repl = 0;
 		if ((n = regcomp(exp->posix, exps,
 		    extended_re ? REG_EXTENDED : 0)) != 0) {
 			regerror(n, exp->posix, errbuf, sizeof errbuf);
@@ -484,6 +487,7 @@ ed_compile_pattern(const char *str)
 			return NULL;
 		}
 		p->is_literal = 1;
+		p->literal_repl = 0;
 		p->literal_search = lit;
 		p->literal_slen = slen;
 		p->nsub = 0;
@@ -531,6 +535,7 @@ ed_compile_pattern(const char *str)
 		}
 		p->is_pcre    = 1;
 		p->is_literal = 0;
+		p->literal_repl = 0;
 		p->nsub       = (int)capturecount;
 		p->multiline = pattern_has_newline(str);
 		p->posix      = NULL;
@@ -559,6 +564,7 @@ ed_compile_pattern(const char *str)
 	}
 	p->is_pcre = 0;
 	p->is_literal = 0;
+	p->literal_repl = 0;
 	{
 		int n;
 		if ((n = regcomp(p->posix, str,

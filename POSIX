@@ -75,7 +75,7 @@ EXTENSIONS
 	-M  Machine/agent mode: convenience flag that enables -s, -A, -v, -l,
 	    -T, and -H simultaneously.  Does not imply -n or -E.
 	-R  Read-only mode: reject any command that modifies the buffer or
-	    writes to a file (a, c, d, e, E, i, j, m, r, s, t, u, w, W, x,
+	    writes to a file (a, c, d, e, E, i, j, m, r, R, s, t, u, w, W, x,
 	    and shell escapes).  Read and search commands continue to work.
 	    Unlike GNU ed's -r (restricted mode), -R restricts buffer
 	    modification rather than file-path access.

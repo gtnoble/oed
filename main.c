@@ -854,7 +854,7 @@ exec_command(void)
 		case 'i': case 'j': case 'm': case 'r': case 's':
 		case 't': case 'u': case 'w': case 'W': case 'x':
 		case '!':
-			seterrmsg("read-only mode");
+			seterrmsg("read-only mode (-R) -- edit not permitted");
 			return ERR;
 		}
 	}

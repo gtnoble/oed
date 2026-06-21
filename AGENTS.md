@@ -352,6 +352,17 @@ Follow these rules on every change.
   reference), in the same commit.
 
 
+**Tool failure discipline.**  If a tool call fails, read and understand the
+error message before retrying.  Never retry the identical command more than
+once without changing an argument, flag, or approach.  If you do not understand
+why it failed, read the relevant skill file or inspect the tool's help output
+before proceeding.  For `hed` specifically: `?` is the error token; the
+verbose explanation goes to stderr.  Read both.  Common causes of repeated
+`no match` errors include: incorrect file paths, wrong delimiters, `-R`
+(read-only) blocking edits, stale `@hash` values from a prior write, and using
+`grep`/`hgrep` exit code 1 (no-match) without a || guard.  Diagnose the cause
+before retrying — never just re-issue the same command.
+
 ## What NOT to Do
 
 - Do not run `./configure` unnecessarily — it overwrites `Makefile` and
